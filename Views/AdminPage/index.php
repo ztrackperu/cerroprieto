@@ -6,7 +6,7 @@
                 <div class="card">
                     <div class="card-body">
                         <div class="d-flex justify-content-center">
-                            <img src="<?php echo base_url.'Assets'; ?>/img/contenedor_2.png" alt="Contenedor" class="img_contenedor">
+                            <img src="<?php echo base_url.'Assets'; ?>/img/cerro_prieto.png" alt="Contenedor" class="img_contenedor">
                         </div>
                         <div class="d-flex flex-wrap justify-content-center mt-5" id="contenidoPrincipal">
                          

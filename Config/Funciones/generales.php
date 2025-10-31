@@ -843,12 +843,13 @@ function ContenedorGruposEspeciales($val) {
         $html .= generarTarjetaAtmosferaControlada($val->atmosfera_controlada);
     }
     
-    if (isset($val->madurador)) {
-        $html .= generarTarjetaMadurador($val->madurador);
-    }
+
     
     if (isset($val->starcool_cerro_prieto)) {
         $html .= generarTarjetaStarcool($val->starcool_cerro_prieto);
+    }
+    if (isset($val->madurador)) {
+        $html .= generarTarjetaMadurador($val->madurador);
     }
     
     if (isset($val->inyectores)) {
@@ -872,7 +873,7 @@ function generarParametrosPrincipales($val) {
         ['icon' => 'bi-arrow-return-left', 'label' => 'Return Air', 'value' => formatearTemperatura($val->return_air ?? null), 'color' => 'warning'],
         ['icon' => 'bi-sun', 'label' => 'Ambient', 'value' => formatearTemperatura($val->ambient_air ?? null), 'color' => 'success'],
         ['icon' => 'bi-lightning-charge', 'label' => 'Power KWH', 'value' => formatearNumero($val->power_kwh ?? null, ' kWh'), 'color' => 'danger'],
-        ['icon' => 'bi-battery', 'label' => 'Battery', 'value' => formatearNumero($val->battery_voltage ?? null, ' V'), 'color' => 'secondary']
+        ['icon' => 'bi-lightning-charge', 'label' => 'Voltage', 'value' => formatearNumero($val->line_voltage ?? null, ' V'), 'color' => 'secondary']
     ];
     
     $html = '';

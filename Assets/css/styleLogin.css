@@ -1,0 +1,300 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', sans-serif;
+}
+
+a {
+    text-decoration: none; 
+    color: inherit; 
+}
+a:hover {
+    color: inherit; 
+}
+
+body {
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: url(../img/fondo.jpg);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    color: #fff;
+}
+
+.container-form {
+    width: 90%;
+    height: 90vh;
+    display: flex;
+    justify-content: space-around;
+    transition:  all .5s ease-out;
+}
+.welcome{
+    display:flex;
+    align-items: center;
+    text-align: center;
+}
+
+.welcome-back {
+    display: flex;
+    align-items: center;
+    text-align: center;
+}
+
+.message {
+    padding: 1rem;
+}
+
+.message h2 {
+    font-size: 1.7rem;
+    padding: 1rem 0;
+}
+
+.message button {
+    padding: 1rem;
+    font-weight: 400;
+    background-color: #4a4aee;
+    border-radius: 2rem;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    font-size: .9rem;
+    margin-top: 2rem;
+    transition: all .3s ease-in;
+    color: #fff;
+}
+
+.message button:hover {
+    background-color: #6464f8;
+}
+
+.create-account {
+    padding: 2.7rem 0;
+    font-size: 1.7rem;
+}
+
+.logo{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.iconos {
+    width: 200px;
+    display: flex;
+    justify-content: space-around;
+    margin: auto;
+}
+
+.border-icon-instagram {
+    height: 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    border: solid thin white;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    transition: all .3s ease-in;
+}
+.border-icon-instagram:hover{
+    background-color: #e1306c;
+    cursor: pointer;
+}
+.border-icon-youtube {
+    height: 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    border: solid thin white;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    transition: all .3s ease-in;
+}
+
+
+.border-icon-youtube:hover {
+    background-color: #f70000;
+    cursor: pointer;
+}
+.border-icon-facebook {
+    height: 20px;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    border: solid thin white;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    transition: all .3s ease-in;
+}
+
+
+.border-icon-facebook:hover {
+    background-color: #4a4aee;
+    cursor: pointer;
+}
+
+.cuenta-gratis {
+    padding: 2rem 0;
+}
+
+.formulario {
+    width: 400px;
+    padding: 1rem;
+    margin: 2rem;
+    background-color: rgba(12, 12, 12, 0.602);
+    text-align: center;
+}
+
+.formulario input {
+    width: 70%;
+    display: block;
+    margin: auto;
+    margin-bottom: 2rem;
+    background-color: transparent;
+    border: none;
+    border-bottom: white thin solid;
+    text-align: center;
+    outline: none;
+    padding: .2rem 0;
+    font-size: .9rem;
+    color: white;
+}
+.formulario input::placeholder {
+    color: white;
+}
+.btn-solicitar {
+    width: 60%;
+    margin: auto;
+    border: solid thin white;
+    padding: .7rem;
+    border-radius: 2rem;
+    background-color: white;
+    font-weight: 600;
+    margin-top: 3rem;
+    font-size: .8rem;
+    cursor: pointer;
+    color: #222;
+}
+.btn-solicitar:hover {
+    background-color: #4a4aee;
+    border: none;
+    cursor: pointer;
+    color:white;
+}
+.formularioInformacion {
+    width: 400px;
+    padding: 1rem;
+    margin: 2rem;
+    background-color: rgba(12, 12, 12, 0.602);
+    text-align: center;
+    
+}
+.formularioInformacion input {
+    width: 70%;
+    display: block;
+    margin: auto;
+    margin-bottom: 2rem;
+    background-color: transparent;
+    border: none;
+    border-bottom: white thin solid;
+    text-align: center;
+    outline: none;
+    padding: .2rem 0;
+    font-size: .9rem;
+}
+.formularioInformacion input::placeholder {
+    color: white; 
+}
+.btn-solicitar-info{
+    width: 60%;
+    margin: auto;
+    border: solid thin white;
+    padding: .7rem;
+    border-radius: 2rem;
+    background-color: white;
+    font-weight: 600;
+    margin-top: 1rem;
+    font-size: .8rem;
+    cursor: pointer;
+    color: #222;
+}
+
+.btn-solicitar-info:hover {
+    background-color: #4a4aee;
+    border: none;
+    cursor: pointer;
+    color:white;
+}
+.sign-in {
+    position: absolute;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.sign-in.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.sign-up.active {
+    opacity: 0;
+    visibility: hidden;
+}
+
+/*-----------------------------RESPONSIVE DESIGN MOVIL-------------------------*/
+@media only screen and (max-width:600px){
+    body{
+        background-size: auto;
+    }
+    .sign-up {
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        gap: 4rem;
+    }
+    .sign-in{
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+    }
+    .formularioInformacion {
+        display:none;
+    }    
+    .formulario {
+        margin-top: 6rem;
+    }
+    .welcome-back{
+        display:none;
+    }
+}
+/*-----------------------------RESPONSIVE DESIGN TABLET-------------------------*/
+@media only screen and (min-width:601px) and (max-width:1024px){
+    body{
+        background-size: auto;
+    }
+   
+}
+
+/*-------------------------------RESPONSIVE DESIGN DESKTOP----------------------*/
+@media only screen and (min-width:1025px){
+    .container-form {
+        width: 70%;
+    }
+    .formulario {
+        width: 50%;
+    }
+}

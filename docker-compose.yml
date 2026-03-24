@@ -1,21 +1,27 @@
+# Desarrollo: PHP + MySQL local en contenedor.
+# Las variables se pueden sobrescribir con un archivo .env en la raíz del proyecto
+# (Docker Compose las usa para sustituir ${VAR:-default}).
+
 services:
   web:
     build: .
     container_name: cerroprieto-web
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
     environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: zgroupot
-      DB_USER: cerroprieto
-      DB_PASS: cerroprieto
-      BASE_URL: http://localhost:8080/
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-zgroupot}
+      DB_USER: ${DB_USER:-cerroprieto}
+      DB_PASS: ${DB_PASS:-cerroprieto}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      BASE_URL: ${BASE_URL:-http://localhost:8080/}
       URLAPI: ${URLAPI:-}
       URLAPI_MYSQL: ${URLAPI_MYSQL:-}
       URLAPI_MONGO: ${URLAPI_MONGO:-}
       URLAPI_MONGO2: ${URLAPI_MONGO2:-}
       URL_NUEVA: ${URL_NUEVA:-}
+      CERRO_PRIETO_SERIES_IMEI: ${CERRO_PRIETO_SERIES_IMEI:-}
     depends_on:
       mysql:
         condition: service_healthy
@@ -28,17 +34,17 @@ services:
     image: mysql:8.0
     container_name: cerroprieto-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: zgroupot
-      MYSQL_USER: cerroprieto
-      MYSQL_PASSWORD: cerroprieto
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-zgroupot}
+      MYSQL_USER: ${DB_USER:-cerroprieto}
+      MYSQL_PASSWORD: ${DB_PASS:-cerroprieto}
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./Assets/bd/base.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root}"]
       interval: 5s
       timeout: 5s
       retries: 10

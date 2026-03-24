@@ -120,11 +120,12 @@
                 $("#loading").show();
             });
         });
-        // Ocultar el GIF 
+        // Ocultar el GIF (solo si existe; el bloque #loading puede estar comentado en navbar)
         window.addEventListener('load', function() {
             setTimeout(function() {
-                document.getElementById('loading').style.display = 'none';
-            }, 1200); // 2 segundos
+                var loadingEl = document.getElementById('loading');
+                if (loadingEl) loadingEl.style.display = 'none';
+            }, 1200);
         });
 </script>
 <?php

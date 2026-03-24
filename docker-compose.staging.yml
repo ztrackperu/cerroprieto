@@ -1,0 +1,61 @@
+# Staging: contenedor web + MySQL en la misma red Docker (evita 1045 por host
+# 'usuario'@'localhost' cuando el cliente viene de 172.x.x.x vía host.docker.internal).
+#
+# Uso:
+#   docker compose -f docker-compose.staging.yml up -d --build
+#
+# Credenciales: mismas variables DB_* que en .env (DB_NAME, DB_USER, DB_PASS).
+# La base puede estar vacía: el login principal usa la API; PDO solo debe conectar.
+# Para importar un dump:
+#   docker exec -i cerroprieto-mysql-staging mysql -u"${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < respaldo.sql
+
+services:
+  web:
+    build: .
+    container_name: cerroprieto-web-staging
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-zgroupztrack}
+      DB_USER: ${DB_USER:-ztrack2023}
+      DB_PASS: ${DB_PASS:-lpmp2018}
+      DB_CHARSET: ${DB_CHARSET:-utf8mb4}
+      BASE_URL: ${BASE_URL:-http://localhost:8080/}
+      URLAPI: ${URLAPI:-}
+      URLAPI_MYSQL: ${URLAPI_MYSQL:-}
+      URLAPI_MONGO: ${URLAPI_MONGO:-}
+      URLAPI_MONGO2: ${URLAPI_MONGO2:-}
+      URL_NUEVA: ${URL_NUEVA:-}
+      CERRO_PRIETO_SERIES_IMEI: ${CERRO_PRIETO_SERIES_IMEI:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - .:/var/www/html
+      - ./docker/php-dev.ini:/usr/local/etc/php/conf.d/99-dev.ini:ro
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: cerroprieto-mysql-staging
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootstaging}
+      MYSQL_DATABASE: ${DB_NAME:-zgroupztrack}
+      MYSQL_USER: ${DB_USER:-ztrack2023}
+      MYSQL_PASSWORD: ${DB_PASS:-lpmp2018}
+    ports:
+      - "${MYSQL_STAGING_PORT:-3307}:3306"
+    volumes:
+      - cerroprieto_mysql_staging:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootstaging}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  cerroprieto_mysql_staging:

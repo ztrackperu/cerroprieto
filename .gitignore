@@ -44,3 +44,5 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com
 Config/Config.php
+.env
+.env.local

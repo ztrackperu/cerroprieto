@@ -17,6 +17,9 @@ class Views{
         else{
             $vista = "Views/".$controlador."/".$vista.".php";
         }
+        if (!is_file($vista)) {
+            $vista = "Views/Configuracion/error.php";
+        }
         require $vista;
     }
 }

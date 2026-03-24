@@ -2,8 +2,13 @@
     ini_set('display_errors', 1);
     ini_set('display_startup_errors', 1);
     error_reporting(E_ALL);
-    ob_end_flush();
+    if (ob_get_level()) {
+        ob_end_flush();
+    }
     require_once "Config/Config.php";
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     require_once "Config/Helpers.php";
     //date_default_timezone_set('America/Lima');
     $ruta = !empty($_GET['url']) ? $_GET['url'] : "Home/index";

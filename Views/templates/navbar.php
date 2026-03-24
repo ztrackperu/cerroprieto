@@ -95,6 +95,24 @@
                     <span class="text-uppercase">Manual Control</span>
                 </a>
             </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link collapsed has-dropdown" data-bs-toggle="collapse"
+                    data-bs-target="#seriesSectoresNav" aria-expanded="false" aria-controls="seriesSectoresNav">
+                    <i class="bi bi-graph-up-arrow"></i>
+                    <span class="text-uppercase">Series por sector</span>
+                </a>
+                <ul id="seriesSectoresNav" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+                    <li class="sidebar-item">
+                        <a href="<?php echo base_url?>SeriesSectores/index/starcool_cerro_prieto" class="sidebar-link">Starcool Cerro Prieto</a>
+                    </li>
+                    <li class="sidebar-item">
+                        <a href="<?php echo base_url?>SeriesSectores/index/atmosfera_controlada" class="sidebar-link">Atmósfera controlada</a>
+                    </li>
+                    <li class="sidebar-item">
+                        <a href="<?php echo base_url?>SeriesSectores/index/madurador" class="sidebar-link">Madurador</a>
+                    </li>
+                </ul>
+            </li>
             <li class="sidebar-item" hidden>
                 <a href="<?php echo base_url?>Cooling" class="sidebar-link">
                     <i class="bi bi-wind"></i>

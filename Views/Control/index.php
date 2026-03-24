@@ -64,6 +64,29 @@
         </div>
     </div>
 </div>
+<!--MODAL PARA PROCESAR O2 -->
+<div class='modal fade' id='procesarO2' tabindex='-1' aria-labelledby='my-modal-title' aria-hidden='true'>
+    <div class='modal-dialog'>
+        <div class='modal-content'>
+            <div class='modal-header'>
+                <h5 class='modal-title' id='title'>SP O2</h5>
+                <button class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>
+            </div>
+            <div class='modal-body'>
+                <div class="mt-2">
+                    <h5 class="text-upppercase text-center">Are you sure you want to edit this parameter?</h5>
+                    <p></p>
+                    <div id="sp_o2_esquema"></div>
+                    <p></p>
+                    <div class="col-12 text-center gap-2">
+                        <button type="button" class="btn btn-success col-3" onclick="btnProcesarO2()">Yes</button>
+                        <button type="button" class="btn btn-danger col-3 clean_inputO2" data-bs-dismiss="modal">No</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <!--MODAL PARA PROCESAR CO2 -->
 <div class='modal fade' id='procesarCO2' tabindex='-1' aria-labelledby='my-modal-title' aria-hidden='true'>
     <div class='modal-dialog'>

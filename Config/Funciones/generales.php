@@ -745,6 +745,15 @@ function ContenedorMadurador_2($val, $url=0){
                         </div>
                     </div>
                     ";
+        if (!empty($val->madurador) && is_object($val->madurador) && contarCamposMadurador($val->madurador) > 6) {
+            $madPlus = "<div class='col-12 mt-3'>" . generarTarjetaMaduradorPlus($val->madurador) . "</div>";
+            $text = preg_replace(
+                "/(\\s*<div class='col-6 col-lg-3'>\\s*<div class='text-center' id='change-button'>)/",
+                $madPlus . '$1',
+                $text,
+                1
+            );
+        }
         $result = array(
             'text'=>$text,
             //'latitud'=>$val->latitud,
@@ -929,8 +938,10 @@ function generarTarjetaAtmosferaControlada($datos) {
     foreach ($camposAC as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
-            $valorFormateado = formatearValorAC($valor, $info['unit']);
-            $colorValor = obtenerColorValor($valor, $campo);
+            $valorFormateado = formatearValorAC($valor, $info['unit'], $campo);
+            $colorValor = ($valorFormateado === 'NA' || $valorFormateado === 'N/A')
+                ? 'text-muted'
+                : obtenerColorValor($valor, $campo);
             
             $html .= "
             <div class='col-6 col-md-4'>
@@ -955,11 +966,187 @@ function generarTarjetaAtmosferaControlada($datos) {
 }
 
 /**
- * Genera tarjeta para Madurador
+ * Cuenta propiedades mad_1..mad_18 presentes en el objeto madurador.
+ */
+function contarCamposMadurador($datos) {
+    if (!is_object($datos)) {
+        return 0;
+    }
+    $c = 0;
+    for ($i = 1; $i <= 18; $i++) {
+        if (property_exists($datos, 'mad_' . $i)) {
+            $c++;
+        }
+    }
+    return $c;
+}
+
+/**
+ * Valor usable numérico para madurador PLUS (excluye códigos de error tipo E01).
+ */
+function maduradorValorNumericoValido($valor) {
+    if ($valor === null || $valor === '') {
+        return false;
+    }
+    if (is_string($valor) && preg_match('/^E\d+/i', trim($valor))) {
+        return false;
+    }
+    return is_numeric($valor);
+}
+
+/**
+ * Campos mad_*: valor 0 se muestra como NA (sensores, CO2, O2, CO2 SP).
+ */
+function madPlusCeroEsNa($campo) {
+    return in_array($campo, ['mad_7', 'mad_8', 'mad_9', 'mad_10', 'mad_13', 'mad_14', 'mad_16'], true);
+}
+
+/**
+ * Formatea un campo según tipo y rangos (NA fuera de rango o no numérico).
+ *
+ * @param string $campo clave mad_1..mad_18 para reglas especiales (0 → NA)
+ */
+function formatearCampoMadPlus($valor, $tipo, $campo = '') {
+    if ($campo !== '' && madPlusCeroEsNa($campo) && maduradorValorNumericoValido($valor) && (float) $valor == 0) {
+        return 'NA';
+    }
+    switch ($tipo) {
+        case 'power':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return $n == 1 ? 'ON' : 'OFF';
+        case 'setpoint':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= -40 && $n <= 40) ? number_format($n, 1) . ' C°' : 'NA';
+        case 'temp':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= -50 && $n <= 60) ? number_format($n, 1) . ' C°' : 'NA';
+        case 'porcentaje':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 100) ? number_format($n, 1) . ' %' : 'NA';
+        case 'cfm':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 250) ? number_format($n, 1) . ' CFM' : 'NA';
+        case 'horas':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 96) ? number_format($n, 1) . ' h' : 'NA';
+        case 'ppm':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 350) ? number_format($n, 1) . ' ppm' : 'NA';
+        default:
+            return 'NA';
+    }
+}
+
+/**
+ * Color de texto según tipo (POWER ON/OFF).
+ */
+function colorTextoMadPlus($valor, $tipo, $textoFormateado) {
+    if ($textoFormateado === 'NA') {
+        return 'text-muted';
+    }
+    if ($tipo === 'power') {
+        return maduradorValorNumericoValido($valor) && (float) $valor == 1 ? 'text-success' : 'text-danger';
+    }
+    return 'text-dark';
+}
+
+/**
+ * Tarjeta Sistema Madurador PLUS (mad_1..mad_18) — misma idea visual que Atmósfera Controlada.
+ */
+function generarTarjetaMaduradorPlus($datos) {
+    if (!$datos || !is_object($datos)) {
+        return '';
+    }
+
+    $camposPlus = [
+        'mad_1' => ['label' => 'POWER', 'tipo' => 'power', 'icon' => 'bi-power'],
+        'mad_2' => ['label' => 'Setpoint', 'tipo' => 'setpoint', 'icon' => 'bi-sliders'],
+        'mad_3' => ['label' => 'Suministro', 'tipo' => 'temp', 'icon' => 'bi-wind'],
+        'mad_4' => ['label' => 'Retorno', 'tipo' => 'temp', 'icon' => 'bi-arrow-return-left'],
+        'mad_5' => ['label' => 'Evaporador', 'tipo' => 'temp', 'icon' => 'bi-cloud-haze2'],
+        'mad_6' => ['label' => 'Condensador', 'tipo' => 'temp', 'icon' => 'bi-thermometer-half'],
+        'mad_7' => ['label' => 'Sensor 1', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
+        'mad_8' => ['label' => 'Sensor 2', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
+        'mad_9' => ['label' => 'Sensor 3', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
+        'mad_10' => ['label' => 'Sensor 4', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
+        'mad_11' => ['label' => 'Humedad', 'tipo' => 'porcentaje', 'icon' => 'bi-droplet'],
+        'mad_12' => ['label' => 'Ventilación', 'tipo' => 'cfm', 'icon' => 'bi-fan'],
+        'mad_13' => ['label' => 'CO2', 'tipo' => 'porcentaje', 'icon' => 'bi-cloud'],
+        'mad_14' => ['label' => 'O2', 'tipo' => 'porcentaje', 'icon' => 'bi-circle-half'],
+        'mad_15' => ['label' => 'Humedad SP', 'tipo' => 'porcentaje', 'icon' => 'bi-moisture'],
+        'mad_16' => ['label' => 'CO2 SP', 'tipo' => 'porcentaje', 'icon' => 'bi-percent'],
+        'mad_17' => ['label' => 'Hora inyección', 'tipo' => 'horas', 'icon' => 'bi-clock-history'],
+        'mad_18' => ['label' => 'PPM (etileno)', 'tipo' => 'ppm', 'icon' => 'bi-activity'],
+    ];
+
+    $html = "
+    <div class='col-lg-12'>
+        <div class='card h-100 border-primary'>
+            <div class='card-header bg-primary text-white'>
+                <h5 class='mb-0'><i class='bi bi-box-seam'></i> Sistema Madurador PLUS</h5>
+            </div>
+            <div class='card-body'>
+                <div class='row g-2'>";
+
+    foreach ($camposPlus as $campo => $info) {
+        $valor = property_exists($datos, $campo) ? $datos->$campo : null;
+        $texto = formatearCampoMadPlus($valor, $info['tipo'], $campo);
+        $color = colorTextoMadPlus($valor, $info['tipo'], $texto);
+
+        $html .= "
+            <div class='col-6 col-md-4 col-lg-3'>
+                <div class='d-flex align-items-center p-2 border rounded bg-light'>
+                    <i class='{$info['icon']} fs-5 text-primary me-2'></i>
+                    <div>
+                        <small class='text-muted d-block'>{$info['label']}</small>
+                        <span class='fw-bold {$color}'>{$texto}</span>
+                    </div>
+                </div>
+            </div>";
+    }
+
+    $html .= "
+                </div>
+            </div>
+        </div>
+    </div>";
+
+    return $html;
+}
+
+/**
+ * Genera tarjeta para Madurador (≤6 campos: clásico; &gt;6: PLUS con mad_1..mad_18).
  */
 function generarTarjetaMadurador($datos) {
-    if (!$datos) return '';
-    
+    if (!$datos) {
+        return '';
+    }
+
+    if (contarCamposMadurador($datos) > 6) {
+        return generarTarjetaMaduradorPlus($datos);
+    }
+
     $html = "
     <div class='col-lg-6'>
         <div class='card h-100 border-success'>
@@ -968,24 +1155,23 @@ function generarTarjetaMadurador($datos) {
             </div>
             <div class='card-body'>
                 <div class='row g-2'>";
-    
-    // Campos del madurador
+
     $camposMad = [
         'mad_1' => ['label' => 'Etileno', 'icon' => 'bi-1-circle'],
         'mad_2' => ['label' => 'SP Etileno', 'icon' => 'bi-2-circle'],
         'mad_3' => ['label' => 'Tiempo Programado', 'icon' => 'bi-3-circle'],
         'mad_4' => ['label' => 'Hora', 'icon' => 'bi-check-circle'],
         'mad_5' => ['label' => 'Minuto', 'icon' => 'bi-check-circle'],
-        'mad_6' => ['label' => 'Segundo', 'icon' => 'bi-check-circle']
+        'mad_6' => ['label' => 'Segundo', 'icon' => 'bi-check-circle'],
     ];
-    
+
     foreach ($camposMad as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
             $estado = $valor > 0 ? 'ACTIVO' : 'INACTIVO';
             $colorEstado = $valor > 0 ? 'text-success' : 'text-secondary';
             $bgColor = $valor > 0 ? 'bg-light-success' : '';
-            
+
             $html .= "
             <div class='col-6 col-md-4'>
                 <div class='d-flex align-items-center p-2 border rounded {$bgColor}'>
@@ -998,13 +1184,13 @@ function generarTarjetaMadurador($datos) {
             </div>";
         }
     }
-    
+
     $html .= "
                 </div>
             </div>
         </div>
     </div>";
-    
+
     return $html;
 }
 
@@ -1162,9 +1348,33 @@ function formatearNumero($valor, $unidad = '') {
     return number_format((float)$valor, 1) . $unidad;
 }
 
-function formatearValorAC($valor, $unidad) {
+/**
+ * Campos ac_*: 0 → NA (sensores 1–4, CO2, O2, SP CO2).
+ */
+function atmosferaCeroEsNa($campo) {
+    return in_array($campo, ['ac_7', 'ac_8', 'ac_9', 'ac_10', 'ac_13', 'ac_14', 'ac_16'], true);
+}
+
+function formatearValorAC($valor, $unidad, $campo = '') {
     if ($valor === null || $valor === -1) {
         return 'N/A';
+    }
+    if ($campo !== '' && atmosferaCeroEsNa($campo) && is_numeric($valor) && (float) $valor == 0) {
+        return 'NA';
+    }
+    // SP Humedad (ac_15): solo 0–100 %; fuera de rango o no numérico → NA
+    if ($campo === 'ac_15') {
+        if (is_string($valor) && preg_match('/^E\d+/i', trim($valor))) {
+            return 'NA';
+        }
+        if (!is_numeric($valor)) {
+            return 'NA';
+        }
+        $n = (float) $valor;
+        if ($n < 0 || $n > 100) {
+            return 'NA';
+        }
+        return number_format($n, 1) . ' ' . $unidad;
     }
     if ($unidad === '') {
         return $valor == 1 ? 'ON' : 'OFF';

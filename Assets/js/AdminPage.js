@@ -9,19 +9,18 @@ const CONFIG = {
         VIEW_HANDLERS: 1000    // 1 segundo
     },
     ENDPOINTS: {
-        LISTA_DISPOSITIVOS: "AdminPage/ListaDispositivoEmpresa", 
+        LISTA_DISPOSITIVOS: "AdminPage/ListaDispositivoEmpresa",
         LIVE_DATA: "AdminPage/LiveData",
-        TABLA_ESTADO: "AdminPage/TablaEstadoDispositivos",
         REGISTRAR: "AdminPage/registrar"
     },
     ICONS: {
         UP: "<i class='bi bi-arrow-up-short me-2 align-items-center mb-1 text-success value-icon'></i>",
         DOWN: "<i class='bi bi-arrow-down-short me-2 align-items-center mb-1 text-danger value-icon'></i>",
+        STABLE: "<i class='bi bi-arrow-left-right me-2 align-items-center mb-1 text-primary value-icon'></i>",
         VIEW_LESS: "<i class='ri-arrow-up-circle-line view-less text-danger fs-2'></i>",
         VIEW_MORE: "<button type='button' class='btn btn-primary btn-sm view-more'>View More</button>"
     }
 };
-
 // ==========================================
 // ESTADO GLOBAL DE LA APLICACIÓN
 // ==========================================
@@ -46,18 +45,26 @@ class EstadoDispositivos {
         };
     }
 
-    actualizar(campo, telemetriaId, valor) {
+    /**
+     * Actualiza el último valor numérico conocido y devuelve la tendencia respecto al ciclo anterior.
+     * 'init' = primera muestra; 'stable' = sin cambio numérico.
+     */
+    actualizarNumerico(campo, telemetriaId, valor) {
         const valorAnterior = this.valores[campo][telemetriaId];
         this.valores[campo][telemetriaId] = valor;
-        
-        if (valorAnterior === undefined) return null;
+        if (valorAnterior === undefined) return 'init';
         if (valor > valorAnterior) return 'up';
         if (valor < valorAnterior) return 'down';
-        return null;
+        return 'stable';
     }
 
-    obtenerTendencia(campo, telemetriaId, valor) {
-        return this.actualizar(campo, telemetriaId, valor);
+    actualizarTexto(campo, telemetriaId, valor) {
+        const valorAnterior = this.valores[campo][telemetriaId];
+        this.valores[campo][telemetriaId] = valor;
+        if (valorAnterior === undefined) return 'init';
+        if (String(valor) > String(valorAnterior)) return 'up';
+        if (String(valor) < String(valorAnterior)) return 'down';
+        return 'stable';
     }
 }
 
@@ -80,12 +87,47 @@ const Utils = {
 
     formatearValor(valor, unidad = '') {
         if (valor === null || valor === undefined) return 'NA';
+        if (typeof valor === 'string' && valor.trim().toUpperCase() === 'NA') return 'NA';
         return `${valor}${unidad}`;
     },
 
     getIcono(tendencia) {
-        if (!tendencia) return '';
-        return tendencia === 'up' ? CONFIG.ICONS.UP : CONFIG.ICONS.DOWN;
+        if (tendencia === 'up') return CONFIG.ICONS.UP;
+        if (tendencia === 'down') return CONFIG.ICONS.DOWN;
+        if (tendencia === 'stable' || tendencia === 'init') return CONFIG.ICONS.STABLE;
+        return CONFIG.ICONS.STABLE;
+    },
+
+    /**
+     * Parsea ultima_fecha tal como la devuelve fechaPro(): "HH:MM:SS - DD/MM/YYYY"
+     */
+    parseFechaProToMs(str) {
+        if (!str || typeof str !== 'string') return null;
+        const m = str.trim().match(/^(\d{2}):(\d{2}):(\d{2})\s*-\s*(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (!m) return null;
+        const [, hh, mm, ss, d, mo, y] = m;
+        const t = new Date(`${y}-${mo}-${d}T${hh}:${mm}:${ss}`).getTime();
+        return Number.isFinite(t) ? t : null;
+    },
+
+    horaCortaDesdeFechaPro(str) {
+        if (!str || typeof str !== 'string') return '';
+        const m = str.trim().match(/^(\d{2}):(\d{2}):(\d{2})\s*-/);
+        return m ? `${m[1]}:${m[2]}` : '';
+    },
+
+    esValorNa(valor) {
+        if (valor === null || valor === undefined) return true;
+        if (typeof valor === 'number' && !Number.isFinite(valor)) return true;
+        const s = String(valor).trim();
+        if (s === '' || s.toUpperCase() === 'NA') return true;
+        return false;
+    },
+
+    parseComparableNumber(valor) {
+        if (Utils.esValorNa(valor)) return null;
+        const n = parseFloat(String(valor).replace(/^\+/, ''));
+        return Number.isFinite(n) ? n : null;
     }
 };
 
@@ -119,22 +161,26 @@ class ManejadorVistas {
 // ==========================================
 class ActualizadorTarjetas {
     constructor() {
+        /** @type {Record<number, number>} ms desde epoch de la última muestra aplicada por dispositivo */
+        this.ultimaFechaMsPorDispositivo = {};
+        /** @type {Record<number, Record<string, string>>} último texto mostrado por campo (para conservar si llega NA) */
+        this.ultimoTextoValor = {};
         this.camposConfig = [
-            { campo: 'ethylene', selector: 'ethyleno', formato: 'ppm', iconSelector: 'eti_icon' },
-            { campo: 'co2_reading', selector: 'co2', formato: '%', iconSelector: 'co2_icon', validacion: this.validarCO2 },
-            { campo: 'temp_supply', selector: 'supply', formato: 'F°', iconSelector: 'supply_icon', usarCampo: 'temp_supply_1' },
-            { campo: 'return_air', selector: 'return', formato: 'F°', iconSelector: 'return_icon' },
-            { campo: 'relative_humidity', selector: 'humidity', formato: '%', iconSelector: 'humidity_icon' },
+            { campo: 'ethylene', selector: 'ethyleno', formato: ' ppm', iconSelector: 'eti_icon' },
+            { campo: 'co2_reading', selector: 'co2', formato: ' %', iconSelector: 'co2_icon', validacion: this.validarCO2 },
+            { campo: 'temp_supply', selector: 'supply', formato: ' F°', iconSelector: 'supply_icon', usarCampo: 'temp_supply_1' },
+            { campo: 'return_air', selector: 'return', formato: ' F°', iconSelector: 'return_icon' },
+            { campo: 'relative_humidity', selector: 'humidity', formato: ' %', iconSelector: 'humidity_icon' },
             { campo: 'ripener_prueba', selector: 'i_hours', formato: '', iconSelector: 'i_hours_icon' },
-            { campo: 'avl', selector: 'avl', formato: 'CFM', iconSelector: 'avl_icon' },
-            { campo: 'compress_coil_1', selector: 'compressor', formato: 'F°', iconSelector: 'compressor_icon' },
-            { campo: 'evaporation_coil', selector: 'evaporator', formato: 'F°', iconSelector: 'evaporator_icon' },
-            { campo: 'ambient_air', selector: 'ambient_air', formato: 'F°', iconSelector: 'ambient_air_icon' },
+            { campo: 'avl', selector: 'avl', formato: ' CFM', iconSelector: 'avl_icon' },
+            { campo: 'compress_coil_1', selector: 'compressor', formato: ' F°', iconSelector: 'compressor_icon' },
+            { campo: 'evaporation_coil', selector: 'evaporator', formato: ' F°', iconSelector: 'evaporator_icon' },
+            { campo: 'ambient_air', selector: 'ambient_air', formato: ' F°', iconSelector: 'ambient_air_icon' },
             { campo: 'defrost_prueba', selector: 'pwd', formato: '', iconSelector: 'pwd_icon' },
             { campo: 'stateProcess', selector: 'proceso', formato: '', iconSelector: 'proceso_icon' },
             { campo: 'controlling_mode', selector: 'c_mode', formato: '', iconSelector: 'c_mode_icon' },
-            { campo: 'cargo_1_temp', selector: 'usda_1', formato: 'F°', iconSelector: 'usda_1_icon' },
-            { campo: 'cargo_2_temp', selector: 'usda_2', formato: 'F°', iconSelector: 'usda_2_icon' }
+            { campo: 'cargo_1_temp', selector: 'usda_1', formato: ' F°', iconSelector: 'usda_1_icon' },
+            { campo: 'cargo_2_temp', selector: 'usda_2', formato: ' F°', iconSelector: 'usda_2_icon' }
         ];
     }
 
@@ -142,41 +188,82 @@ class ActualizadorTarjetas {
         return (valor >= 0 && valor <= 30) ? valor : 'NA';
     }
 
+    /**
+     * Solo aplica la tanda si ultima_fecha es estrictamente más reciente que la última vista (evita datos viejos).
+     */
     actualizarTarjeta(datos) {
         const telemetriaId = datos.telemetria_id;
-        
-        // Actualizar fecha
+        const tsMs = Utils.parseFechaProToMs(datos.ultima_fecha);
+
+        if (tsMs !== null) {
+            const prevMs = this.ultimaFechaMsPorDispositivo[telemetriaId];
+            if (prevMs !== undefined && tsMs <= prevMs) {
+                return;
+            }
+            this.ultimaFechaMsPorDispositivo[telemetriaId] = tsMs;
+        }
+
         $(`#fechita_${telemetriaId}`).text(datos.ultima_fecha);
-        
-        // Actualizar campos con batch DOM updates
+
+        const horaCorta = Utils.horaCortaDesdeFechaPro(datos.ultima_fecha);
         const actualizaciones = [];
-        
+
         this.camposConfig.forEach(config => {
             const valorCampo = config.usarCampo ? datos[config.usarCampo] : datos[config.campo];
-            const valor = config.validacion ? config.validacion(valorCampo) : valorCampo;
-            const tendencia = estado.obtenerTendencia(config.campo, telemetriaId, datos[config.campo]);
-            
-            // Agregar actualizaciones al batch
-            actualizaciones.push({
-                selector: `#${config.selector}_${telemetriaId}`,
-                valor: Utils.formatearValor(valor, config.formato)
-            });
-            
-            if (config.iconSelector && tendencia) {
-                actualizaciones.push({
-                    selector: `#${config.iconSelector}_${telemetriaId}`,
-                    html: Utils.getIcono(tendencia)
-                });
-            }
-        });
-        
-        // Aplicar todas las actualizaciones en batch
-        requestAnimationFrame(() => {
-            actualizaciones.forEach(update => {
-                if (update.html) {
-                    $(update.selector).html(update.html);
+            let valor = config.validacion ? config.validacion(valorCampo) : valorCampo;
+
+            const cachePorId = this.ultimoTextoValor[telemetriaId] || (this.ultimoTextoValor[telemetriaId] = {});
+            let tendencia;
+            let textoMostrar;
+            let marcarHoraEnEtiqueta = false;
+
+            if (Utils.esValorNa(valor)) {
+                textoMostrar =
+                    cachePorId[config.selector] !== undefined ? cachePorId[config.selector] : 'NA';
+                tendencia = 'stable';
+            } else {
+                textoMostrar = Utils.formatearValor(valor, config.formato);
+                cachePorId[config.selector] = textoMostrar;
+
+                const num = Utils.parseComparableNumber(valor);
+                if (num !== null) {
+                    tendencia = estado.actualizarNumerico(config.campo, telemetriaId, num);
                 } else {
-                    $(update.selector).text(update.valor);
+                    tendencia = estado.actualizarTexto(config.campo, telemetriaId, String(valor));
+                }
+            }
+
+            if ((tendencia === 'up' || tendencia === 'down') && horaCorta) {
+                marcarHoraEnEtiqueta = true;
+            }
+
+            actualizaciones.push({
+                labelSelector: `#${config.selector}_${telemetriaId}`,
+                iconSelector: config.iconSelector ? `#${config.iconSelector}_${telemetriaId}` : null,
+                texto: textoMostrar,
+                tendencia,
+                marcarHoraEnEtiqueta,
+                horaCorta
+            });
+        });
+
+        requestAnimationFrame(() => {
+            actualizaciones.forEach(u => {
+                const $lab = $(u.labelSelector);
+                if ($lab.length === 0) return;
+
+                if (u.marcarHoraEnEtiqueta && u.horaCorta) {
+                    $lab.empty();
+                    $lab.append(document.createTextNode(u.texto));
+                    const cls = u.tendencia === 'up' ? 'text-success' : 'text-danger';
+                    $lab.append($('<small>').addClass(`ms-1 fw-normal ${cls}`).text(u.horaCorta));
+                } else {
+                    $lab.text(u.texto);
+                }
+
+                if (u.iconSelector) {
+                    const $ic = $(u.iconSelector);
+                    if ($ic.length) $ic.html(Utils.getIcono(u.tendencia));
                 }
             });
         });
@@ -210,8 +297,6 @@ class GestorDispositivos {
             if (contenidoPrincipal) {
                 //contenidoPrincipal.innerHTML = data.text;
             }
-            
-            await this.verificarEstadoDispositivos();
         } catch (error) {
             console.error('Error cargando dispositivos:', error);
             alert('Error al cargar los dispositivos. Por favor, recarga la página.');
@@ -232,33 +317,6 @@ class GestorDispositivos {
         } catch (error) {
             console.error('Error obteniendo datos live:', error);
             return [];
-        }
-    }
-
-    async verificarEstadoDispositivos() {
-        try {
-            const result = await Utils.fetchData(CONFIG.ENDPOINTS.TABLA_ESTADO);
-            console.log('Estado dispositivos:', result);
-            
-            if (result && result.length !== 0 && result.estado) {
-                const hayProblemas = result.estado.some(item => 
-                    item.estado === 'WAIT' || item.estado === 'OFFLINE'
-                );
-                
-                if (hayProblemas) {
-                    this.mostrarModalDispositivos(result.text);
-                }
-            }
-        } catch (error) {
-            console.error('Error verificando estado:', error);
-        }
-    }
-
-    mostrarModalDispositivos(contenidoHTML) {
-        const contenidoD = document.getElementById('contenidoDispositivos');
-        if (contenidoD) {
-            contenidoD.innerHTML = contenidoHTML;
-            $('#modalDispositivos').modal('show');
         }
     }
 
@@ -333,7 +391,7 @@ class AplicacionPrincipal {
     }
 
     async inicializar() {
-        console.log('Inicializando aplicación...');
+        console.log('Luis Inicializando aplicación...');
         
         try {
             // Cargar dispositivos iniciales

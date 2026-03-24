@@ -1,9 +1,8 @@
 <?php
 class Graph extends Controller
 {
-    public function __construct() 
+    public function __construct()
     {
-        session_start();
         if (empty($_SESSION['activo_ztrack'])) {
             header("location: " . base_url);
         }

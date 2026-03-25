@@ -1,12 +1,16 @@
 /**
  * Series históricas Cerro Prieto — API vía proxy SeriesSectores/series/{sector}
- * Starcool: relés no se grafican; grupos CO2 / O2 / humedad con toggles; humedad en eje Y1 (0–100).
+ * Starcool: relés no se grafican; CO2/O2 eje Y izquierdo 0–100 %; humedad eje Y1 derecho 0–100 %.
+ * Starcool: spanGaps para no cortar la línea en nulos; SET CO1–3 / O1–3 como líneas horizontales de referencia (%).
  * Atmósfera: Power no se grafica; Y1 temperaturas, Y2 %, Y3 ventilación CFM; por defecto Set Point, Suministro y Retorno.
  * Madurador: igual; Y4 etileno (ppm) 0–300; hora inyección en Y1; Power no se grafica.
  */
 (function () {
     const sector = typeof window.SERIES_SECTOR === 'string' ? window.SERIES_SECTOR : 'starcool_cerro_prieto';
     const labelsMap = window.SERIES_LABELS && typeof window.SERIES_LABELS === 'object' ? window.SERIES_LABELS : {};
+    /** Solo usuario de sesión zgroup (PHP): botón Procesar y panel de análisis SET */
+    const allowStarcoolSetAnalysis =
+        typeof window.SERIES_ALLOW_SET_ANALYSIS !== 'undefined' && window.SERIES_ALLOW_SET_ANALYSIS === true;
     const isStarcool = sector === 'starcool_cerro_prieto';
     const isAtmosfera = sector === 'atmosfera_controlada';
     const isMadurador = sector === 'madurador';
@@ -23,6 +27,10 @@
     const ATMOSFERA_PCT_KEYS = new Set(['ac_11', 'ac_13', 'ac_14', 'ac_15', 'ac_16']);
     /** Ventilación CFM → eje y3 */
     const ATMOSFERA_VENT_KEY = 'ac_12';
+
+    /** Eje Y2 (gases / %): rango fijo para lectura uniforme */
+    const ATMOSFERA_PCT_AXIS_MIN = 0;
+    const ATMOSFERA_PCT_AXIS_MAX = 100;
 
     /** Por defecto visibles en el gráfico: Set Point, Suministro, Retorno */
     const ATMOSFERA_DEFAULT_ON = new Set(['ac_2', 'ac_3', 'ac_4']);
@@ -113,6 +121,24 @@
         { id: 'humedad', label: 'Humedad', keys: ['st_7', 'st_8', 'st_9'], defaultGroupOn: false }
     ];
 
+    /** Eje Y izquierdo (CO₂ / O₂ y líneas SET): escala fija % */
+    const STARCOOL_MAIN_AXIS_MIN = 0;
+    const STARCOOL_MAIN_AXIS_MAX = 100;
+
+    /** Referencias horizontales (%), misma clave que la serie a comparar */
+    const STARCOOL_SETPOINT_DEFS = [
+        { key: 'st_1', label: 'SET CO1' },
+        { key: 'st_2', label: 'SET CO2' },
+        { key: 'st_3', label: 'SET CO3' },
+        { key: 'st_4', label: 'SET O1' },
+        { key: 'st_5', label: 'SET O2' },
+        { key: 'st_6', label: 'SET O3' }
+    ];
+
+    /** Valores tecleados en inputs SET (string); persiste entre recargas de datos */
+    const starcoolSetValues = {};
+    let starcoolSetInputDebounce = null;
+
     const COLORS = [
         '#0d6efd', '#198754', '#dc3545', '#fd7e14', '#6f42c1', '#20c997', '#6610f2', '#d63384',
         '#0dcaf0', '#ffc107', '#845ef7', '#51cf66', '#ff922b', '#212529'
@@ -148,7 +174,14 @@
         atmosferaPanel: document.getElementById('seriesAtmosferaControls'),
         atmosferaBody: document.getElementById('seriesAtmosferaControlsBody'),
         maduradorPanel: document.getElementById('seriesMaduradorControls'),
-        maduradorBody: document.getElementById('seriesMaduradorControlsBody')
+        maduradorBody: document.getElementById('seriesMaduradorControlsBody'),
+        exportToolbar: document.getElementById('seriesExportToolbar'),
+        exportToolbarTable: document.getElementById('seriesExportToolbarTable'),
+        exportXlsx: document.getElementById('seriesExportXlsx'),
+        exportCsv: document.getElementById('seriesExportCsv'),
+        exportPdf: document.getElementById('seriesExportPdf'),
+        starcoolStatsWrap: document.getElementById('seriesStarcoolStatsWrap'),
+        starcoolStatsBody: document.getElementById('seriesStarcoolStatsBody')
     };
 
     function showLoader(on) {
@@ -189,6 +222,424 @@
 
     function isStarcoolHumedadKey(key) {
         return key === 'st_7' || key === 'st_8' || key === 'st_9';
+    }
+
+    function parseStarcoolSetValue(key) {
+        const raw = starcoolSetValues[key];
+        if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+        const n = Number(String(raw).replace(',', '.'));
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function appendStarcoolSetpointRow(seriesObj) {
+        if (!el.starcoolBody) return;
+        const anyCo2o2 = STARCOOL_SETPOINT_DEFS.some(function (d) {
+            return Object.prototype.hasOwnProperty.call(seriesObj, d.key);
+        });
+        if (!anyCo2o2) return;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'col-12 mt-2';
+        const inner = document.createElement('div');
+        inner.className = 'border rounded p-2 bg-white';
+        inner.innerHTML =
+            '<p class="small fw-semibold mb-2 mb-md-1">Referencias SET (% CO₂ / O₂) — línea horizontal para comparar con las lecturas</p>' +
+            '<p class="small text-muted mb-2 d-none d-md-block">Deje vacío para ocultar. Mismo color que el sensor, trazo discontinuo.</p>';
+
+        const grid = document.createElement('div');
+        grid.className = 'row g-2 align-items-end';
+
+        STARCOOL_SETPOINT_DEFS.forEach(function (def) {
+            if (!Object.prototype.hasOwnProperty.call(seriesObj, def.key)) return;
+            const col = document.createElement('div');
+            col.className = 'col-6 col-md-4 col-lg-2';
+            const lab = document.createElement('label');
+            lab.className = 'form-label small text-muted mb-0';
+            lab.setAttribute('for', 'starcool-set-' + def.key);
+            lab.textContent = def.label + ' (%)';
+            const inp = document.createElement('input');
+            inp.type = 'number';
+            inp.step = 'any';
+            inp.className = 'form-control form-control-sm';
+            inp.id = 'starcool-set-' + def.key;
+            inp.dataset.starcoolSetKey = def.key;
+            inp.placeholder = '—';
+            inp.value =
+                starcoolSetValues[def.key] !== undefined && starcoolSetValues[def.key] !== null
+                    ? String(starcoolSetValues[def.key])
+                    : '';
+
+            function applySetFromInput() {
+                const v = inp.value.trim();
+                if (v === '') {
+                    delete starcoolSetValues[def.key];
+                } else {
+                    starcoolSetValues[def.key] = v;
+                }
+            }
+            inp.addEventListener('change', function () {
+                applySetFromInput();
+                refreshStarcoolChart();
+            });
+            inp.addEventListener('input', function () {
+                applySetFromInput();
+                if (starcoolSetInputDebounce) clearTimeout(starcoolSetInputDebounce);
+                starcoolSetInputDebounce = setTimeout(function () {
+                    starcoolSetInputDebounce = null;
+                    refreshStarcoolChart();
+                }, 300);
+            });
+
+            col.appendChild(lab);
+            col.appendChild(inp);
+            grid.appendChild(col);
+        });
+
+        inner.appendChild(grid);
+
+        if (allowStarcoolSetAnalysis) {
+            const rowBtn = document.createElement('div');
+            rowBtn.className = 'row g-2 mt-2';
+            const colBtn = document.createElement('div');
+            colBtn.className = 'col-12 d-flex flex-wrap align-items-center gap-2';
+            const btnProc = document.createElement('button');
+            btnProc.type = 'button';
+            btnProc.className = 'btn btn-primary btn-sm';
+            btnProc.textContent = 'Procesar';
+            btnProc.setAttribute('aria-label', 'Procesar comparación SET vs lecturas');
+            btnProc.addEventListener('click', function () {
+                runStarcoolSetpointAnalysis();
+            });
+            const hintProc = document.createElement('small');
+            hintProc.className = 'text-muted';
+            hintProc.textContent =
+                'Compara cada SET con su sensor (CO1↔sensor 1, …). Banda en rango: ±10 % del SET. Pulse tras cargar datos y definir SET.';
+            colBtn.appendChild(btnProc);
+            colBtn.appendChild(hintProc);
+            rowBtn.appendChild(colBtn);
+            inner.appendChild(rowBtn);
+        }
+
+        wrap.appendChild(inner);
+        el.starcoolBody.appendChild(wrap);
+    }
+
+    function buildStarcoolReferenceDatasets(fechas, colorOrder) {
+        if (!fechas || fechas.length === 0) return [];
+        const t0 = new Date(fechas[0]);
+        const t1 = new Date(fechas[fechas.length - 1]);
+        if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime())) return [];
+
+        const out = [];
+        STARCOOL_SETPOINT_DEFS.forEach(function (def) {
+            const num = parseStarcoolSetValue(def.key);
+            if (num == null) return;
+            const ci = colorIndexForKey(def.key, colorOrder);
+            const baseColor = COLORS[ci % COLORS.length];
+            out.push({
+                label: def.label + ' (ref. %)',
+                data: [
+                    { x: t0, y: num },
+                    { x: t1, y: num }
+                ],
+                yAxisID: 'y',
+                borderColor: baseColor,
+                backgroundColor: 'transparent',
+                borderDash: [10, 5],
+                pointRadius: 0,
+                pointHoverRadius: 0,
+                borderWidth: 2,
+                tension: 0,
+                spanGaps: true,
+                order: 10
+            });
+        });
+        return out;
+    }
+
+    function parseFechaMs(t) {
+        const d = new Date(t);
+        const x = d.getTime();
+        return Number.isFinite(x) ? x : null;
+    }
+
+    function formatDurationMs(ms) {
+        if (!Number.isFinite(ms) || ms <= 0) return '0 s';
+        const sec = Math.floor(ms / 1000);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        const parts = [];
+        if (h > 0) parts.push(h + ' h');
+        if (m > 0) parts.push(m + ' min');
+        if (s > 0 || parts.length === 0) parts.push(s + ' s');
+        return parts.join(' ');
+    }
+
+    function fmtStatNum(v, dec) {
+        const d = dec != null ? dec : 3;
+        if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+        return Number(v).toFixed(d);
+    }
+
+    /**
+     * Estadísticas de la serie vs setpoint. Banda en rango: [set×0,9 , set×1,1].
+     * Tiempo en banda: suma de (t[i+1]-t[i]) solo si ambas lecturas consecutivas están en banda.
+     */
+    function computeSetVsSeriesStats(fechas, arr, setpoint) {
+        const low = setpoint * 0.9;
+        const high = setpoint * 1.1;
+        const vals = [];
+        const times = [];
+        const nMax = Math.min(fechas.length, arr.length);
+        for (let i = 0; i < nMax; i++) {
+            const raw = arr[i];
+            if (raw === null || raw === undefined || raw === '') continue;
+            const v = Number(raw);
+            if (!Number.isFinite(v)) continue;
+            const tms = parseFechaMs(fechas[i]);
+            if (tms == null) continue;
+            vals.push(v);
+            times.push(tms);
+        }
+        const n = vals.length;
+        if (n === 0) return null;
+
+        let sum = 0;
+        for (let j = 0; j < n; j++) sum += vals[j];
+        const mean = sum / n;
+
+        let sumSq = 0;
+        for (let j = 0; j < n; j++) {
+            const d = vals[j] - mean;
+            sumSq += d * d;
+        }
+        const stdev = n > 1 ? Math.sqrt(sumSq / (n - 1)) : 0;
+
+        let minV = vals[0];
+        let maxV = vals[0];
+        for (let j = 1; j < n; j++) {
+            if (vals[j] < minV) minV = vals[j];
+            if (vals[j] > maxV) maxV = vals[j];
+        }
+
+        let timeInBandMs = 0;
+        for (let i = 0; i < n - 1; i++) {
+            const v0 = vals[i];
+            const v1 = vals[i + 1];
+            if (v0 >= low && v0 <= high && v1 >= low && v1 <= high) {
+                timeInBandMs += Math.max(0, times[i + 1] - times[i]);
+            }
+        }
+
+        const totalSpanMs = Math.max(0, times[n - 1] - times[0]);
+        const pctTimeInBand = totalSpanMs > 0 ? (timeInBandMs / totalSpanMs) * 100 : 0;
+
+        let samplesInBand = 0;
+        for (let j = 0; j < n; j++) {
+            if (vals[j] >= low && vals[j] <= high) samplesInBand++;
+        }
+        const pctSamplesInBand = (samplesInBand / n) * 100;
+
+        let sumAbs = 0;
+        for (let j = 0; j < n; j++) sumAbs += Math.abs(vals[j] - setpoint);
+        const meanAbsErr = sumAbs / n;
+        const meanRelErrPct =
+            setpoint !== 0 && Number.isFinite(setpoint) ? (meanAbsErr / Math.abs(setpoint)) * 100 : null;
+
+        const cvPct = mean !== 0 && Number.isFinite(mean) ? (stdev / Math.abs(mean)) * 100 : null;
+
+        return {
+            n: n,
+            mean: mean,
+            stdev: stdev,
+            minV: minV,
+            maxV: maxV,
+            setpoint: setpoint,
+            low: low,
+            high: high,
+            diffMeanVsSet: mean - setpoint,
+            faltaSubir: setpoint - mean,
+            timeInBandMs: timeInBandMs,
+            totalSpanMs: totalSpanMs,
+            pctTimeInBand: pctTimeInBand,
+            samplesInBand: samplesInBand,
+            pctSamplesInBand: pctSamplesInBand,
+            meanAbsErr: meanAbsErr,
+            meanRelErrPct: meanRelErrPct,
+            cvPct: cvPct
+        };
+    }
+
+    function hideStarcoolStatsPanel() {
+        if (el.starcoolStatsWrap) el.starcoolStatsWrap.classList.add('d-none');
+        if (el.starcoolStatsBody) el.starcoolStatsBody.innerHTML = '';
+    }
+
+    function runStarcoolSetpointAnalysis() {
+        if (!allowStarcoolSetAnalysis) return;
+        if (!isStarcool || !lastPayload || !lastPayload.data) {
+            showAlert('No hay datos cargados. Consulte un rango primero.', 'warning');
+            return;
+        }
+        if (!el.starcoolStatsBody || !el.starcoolStatsWrap) return;
+
+        let hasAnySet = false;
+        STARCOOL_SETPOINT_DEFS.forEach(function (d) {
+            if (parseStarcoolSetValue(d.key) != null) hasAnySet = true;
+        });
+        if (!hasAnySet) {
+            showAlert('Indique al menos un SET (CO1–CO3 u O1–O3) para comparar con las lecturas.', 'warning');
+            return;
+        }
+
+        const d = lastPayload.data;
+        const fechas = d.fechas;
+        const seriesObj = d.series;
+
+        const thead = document.createElement('thead');
+        thead.className = 'table-light';
+        thead.innerHTML =
+            '<tr>' +
+            '<th>Serie</th>' +
+            '<th class="text-end">SET (%)</th>' +
+            '<th class="text-end">Banda ±10%</th>' +
+            '<th class="text-end">n</th>' +
+            '<th class="text-end">Promedio</th>' +
+            '<th class="text-end">Δ prom. vs SET</th>' +
+            '<th class="text-end">Ajuste vs SET</th>' +
+            '<th class="text-end">Tiempo en banda</th>' +
+            '<th class="text-end">% tiempo en banda</th>' +
+            '<th class="text-end">% muestras en banda</th>' +
+            '<th class="text-end">σ (desv. est.)</th>' +
+            '<th class="text-end">CV %</th>' +
+            '<th class="text-end">Err. abs. medio</th>' +
+            '<th class="text-end">Err. rel. medio</th>' +
+            '<th class="text-end">Mín</th>' +
+            '<th class="text-end">Máx</th>' +
+            '</tr>';
+
+        const tbody = document.createElement('tbody');
+        let rowCount = 0;
+
+        STARCOOL_SETPOINT_DEFS.forEach(function (def) {
+            const sp = parseStarcoolSetValue(def.key);
+            if (sp == null) return;
+            if (!Object.prototype.hasOwnProperty.call(seriesObj, def.key)) {
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' +
+                    serieLabel(def.key) +
+                    ' <small class="text-muted">(' +
+                    def.label +
+                    ')</small></td>' +
+                    '<td colspan="15" class="text-warning">No hay serie de datos para este canal.</td>';
+                tbody.appendChild(tr);
+                rowCount++;
+                return;
+            }
+            const stats = computeSetVsSeriesStats(fechas, seriesObj[def.key], sp);
+            if (!stats) {
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    '<td>' +
+                    serieLabel(def.key) +
+                    '</td>' +
+                    '<td class="text-end">' +
+                    fmtStatNum(sp, 3) +
+                    '</td>' +
+                    '<td colspan="14" class="text-muted">Sin valores numéricos en el rango.</td>';
+                tbody.appendChild(tr);
+                rowCount++;
+                return;
+            }
+
+            const adj =
+                Math.abs(stats.faltaSubir) < 1e-9
+                    ? 'En el set (prom.)'
+                    : stats.faltaSubir > 0
+                      ? 'Falta subir ~' + fmtStatNum(stats.faltaSubir, 3) + ' % (prom.)'
+                      : 'Exceso ~' + fmtStatNum(-stats.faltaSubir, 3) + ' % (prom.)';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+                '<td>' +
+                serieLabel(def.key) +
+                ' <small class="text-muted">(' +
+                def.label +
+                ')</small></td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.setpoint, 3) +
+                '</td>' +
+                '<td class="text-end small">' +
+                fmtStatNum(stats.low, 2) +
+                ' – ' +
+                fmtStatNum(stats.high, 2) +
+                '</td>' +
+                '<td class="text-end">' +
+                stats.n +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.mean, 3) +
+                '</td>' +
+                '<td class="text-end">' +
+                (stats.diffMeanVsSet >= 0 ? '+' : '') +
+                fmtStatNum(stats.diffMeanVsSet, 3) +
+                '</td>' +
+                '<td class="text-end small">' +
+                adj +
+                '</td>' +
+                '<td class="text-end text-nowrap">' +
+                formatDurationMs(stats.timeInBandMs) +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.pctTimeInBand, 1) +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.pctSamplesInBand, 1) +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.stdev, 4) +
+                '</td>' +
+                '<td class="text-end">' +
+                (stats.cvPct != null ? fmtStatNum(stats.cvPct, 2) : '—') +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.meanAbsErr, 4) +
+                '</td>' +
+                '<td class="text-end">' +
+                (stats.meanRelErrPct != null ? fmtStatNum(stats.meanRelErrPct, 2) : '—') +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.minV, 3) +
+                '</td>' +
+                '<td class="text-end">' +
+                fmtStatNum(stats.maxV, 3) +
+                '</td>';
+            tbody.appendChild(tr);
+            rowCount++;
+        });
+
+        el.starcoolStatsBody.innerHTML = '';
+        const note = document.createElement('p');
+        note.className = 'small text-muted mb-2';
+        note.innerHTML =
+            'Se usan todas las muestras numéricas del rango. <strong>Tiempo en banda</strong>: suma de intervalos entre muestras consecutivas donde <em>ambas</em> lecturas están entre SET×0,9 y SET×1,1. <strong>% tiempo en banda</strong> respecto al intervalo total (primera→última muestra válida).';
+        el.starcoolStatsBody.appendChild(note);
+
+        const wrapTbl = document.createElement('div');
+        wrapTbl.className = 'table-responsive';
+        const table = document.createElement('table');
+        table.className = 'table table-sm table-bordered table-hover align-middle mb-0';
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        wrapTbl.appendChild(table);
+        el.starcoolStatsBody.appendChild(wrapTbl);
+
+        if (rowCount > 0) {
+            el.starcoolStatsWrap.classList.remove('d-none');
+            el.starcoolStatsWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
     }
 
     function atmosferaYAxisId(key) {
@@ -402,6 +853,7 @@
         });
 
         el.starcoolBody.appendChild(row);
+        appendStarcoolSetpointRow(seriesObj);
     }
 
     function syncStarcoolGroupMaster(groupId, keysInData) {
@@ -698,8 +1150,9 @@
                     return !STARCOOL_RELE_KEYS.has(k);
                 });
             const hasHumedadVisible = chartKeys.some(isStarcoolHumedadKey);
+            const refDatasets = buildStarcoolReferenceDatasets(fechas, colorOrder);
 
-            if (chartKeys.length === 0) {
+            if (chartKeys.length === 0 && refDatasets.length === 0) {
                 const ctx = el.canvas.getContext('2d');
                 chartInstance = new Chart(ctx, {
                     type: 'line',
@@ -710,7 +1163,7 @@
                         plugins: {
                             title: {
                                 display: true,
-                                text: 'Marque al menos una serie en el panel superior'
+                                text: 'Marque al menos una serie en el panel superior o indique un SET CO/O2'
                             }
                         }
                     }
@@ -736,10 +1189,14 @@
                     borderColor: COLORS[ci % COLORS.length],
                     backgroundColor: 'transparent',
                     tension: 0.15,
-                    spanGaps: false,
+                    spanGaps: true,
                     pointRadius: fechas.length > 80 ? 0 : 2,
-                    borderWidth: 1.5
+                    borderWidth: 1.5,
+                    order: 0
                 };
+            });
+            refDatasets.forEach(function (ds) {
+                datasets.push(ds);
             });
 
             const scales = {
@@ -747,7 +1204,9 @@
                 y: {
                     type: 'linear',
                     position: 'left',
-                    title: { display: true, text: 'CO2 / O2 / otros (%)' },
+                    min: STARCOOL_MAIN_AXIS_MIN,
+                    max: STARCOOL_MAIN_AXIS_MAX,
+                    title: { display: true, text: 'CO2 / O2 (%)' },
                     grid: { drawOnChartArea: true }
                 }
             };
@@ -861,7 +1320,9 @@
                 scales.y2 = {
                     type: 'linear',
                     position: 'right',
-                    title: { display: true, text: '%' },
+                    min: ATMOSFERA_PCT_AXIS_MIN,
+                    max: ATMOSFERA_PCT_AXIS_MAX,
+                    title: { display: true, text: 'Gases / humedad (%)' },
                     grid: { drawOnChartArea: false }
                 };
             }
@@ -1088,6 +1549,156 @@
         });
     }
 
+    function sanitizeSeriesFilename(base) {
+        const s = String(base || 'series').replace(/[^a-zA-Z0-9_-]/g, '_');
+        return s || 'series';
+    }
+
+    function seriesExportTimestamp() {
+        const d = new Date();
+        const pad = function (n) {
+            return String(n).padStart(2, '0');
+        };
+        return (
+            d.getFullYear() +
+            '-' +
+            pad(d.getMonth() + 1) +
+            '-' +
+            pad(d.getDate()) +
+            '_' +
+            pad(d.getHours()) +
+            pad(d.getMinutes()) +
+            pad(d.getSeconds())
+        );
+    }
+
+    /**
+     * Misma estructura que la tabla en pantalla (valores crudos; vacío si null).
+     * @returns {{ headers: string[], rows: string[][] } | null}
+     */
+    function buildSeriesTableMatrix() {
+        if (!lastPayload || !lastPayload.data) return null;
+        const d = lastPayload.data;
+        const fechas = d.fechas;
+        const seriesObj = d.series;
+        if (!Array.isArray(fechas) || fechas.length === 0) return null;
+        const keys = Object.keys(seriesObj).sort();
+        if (keys.length === 0) return null;
+        const headers = ['Fecha / hora'].concat(
+            keys.map(function (k) {
+                return serieLabel(k);
+            })
+        );
+        const rows = fechas.map(function (t, rowIdx) {
+            const row = [String(t)];
+            keys.forEach(function (key) {
+                const v = seriesObj[key][rowIdx];
+                row.push(v === null || v === undefined ? '' : String(v));
+            });
+            return row;
+        });
+        return { headers: headers, rows: rows };
+    }
+
+    function exportSeriesTableCsv(matrix, fileBase, ts) {
+        const lines = [matrix.headers].concat(matrix.rows);
+        const csv = lines
+            .map(function (row) {
+                return row
+                    .map(function (cell) {
+                        const s = String(cell != null ? cell : '');
+                        if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+                        return s;
+                    })
+                    .join(',');
+            })
+            .join('\r\n');
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = sanitizeSeriesFilename(fileBase) + '_' + ts + '.csv';
+        a.click();
+        setTimeout(function () {
+            URL.revokeObjectURL(a.href);
+        }, 0);
+    }
+
+    function exportSeriesTableXlsx(matrix, fileBase, ts) {
+        if (typeof XLSX === 'undefined') {
+            showAlert('No se cargó la librería Excel. Recargue la página.', 'warning');
+            return;
+        }
+        const aoa = [matrix.headers].concat(matrix.rows);
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Series');
+        XLSX.writeFile(wb, sanitizeSeriesFilename(fileBase) + '_' + ts + '.xlsx');
+    }
+
+    function exportSeriesTablePdf(matrix, fileBase, ts) {
+        const jspdf = window.jspdf;
+        if (!jspdf || typeof jspdf.jsPDF !== 'function') {
+            showAlert('No se cargó la librería PDF. Recargue la página.', 'warning');
+            return;
+        }
+        const Doc = jspdf.jsPDF;
+        const doc = new Doc({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+        const title = 'Series históricas — ' + sector;
+        doc.setFontSize(11);
+        doc.text(title, 14, 12);
+        const sub =
+            lastPayload && lastPayload.data && lastPayload.data.puntos != null
+                ? lastPayload.data.puntos + ' puntos'
+                : '';
+        if (sub) {
+            doc.setFontSize(9);
+            doc.setTextColor(100);
+            doc.text(sub, 14, 17);
+            doc.setTextColor(0);
+        }
+        if (typeof doc.autoTable === 'function') {
+            doc.autoTable({
+                head: [matrix.headers],
+                body: matrix.rows,
+                startY: sub ? 20 : 16,
+                styles: { fontSize: 6, cellPadding: 1 },
+                headStyles: { fillColor: [13, 110, 253] },
+                margin: { left: 10, right: 10 }
+            });
+        } else {
+            doc.setFontSize(8);
+            let y = 25;
+            matrix.rows.forEach(function (r) {
+                doc.text(r.join(' | '), 10, y);
+                y += 4;
+            });
+        }
+        doc.save(sanitizeSeriesFilename(fileBase) + '_' + ts + '.pdf');
+    }
+
+    function exportSeriesTable(fmt) {
+        const matrix = buildSeriesTableMatrix();
+        if (!matrix) {
+            showAlert('No hay datos en la tabla para exportar.', 'warning');
+            return;
+        }
+        const fileBase = sector;
+        const ts = seriesExportTimestamp();
+        const f = (fmt || '').toLowerCase();
+        if (f === 'csv') {
+            exportSeriesTableCsv(matrix, fileBase, ts);
+        } else if (f === 'xlsx') {
+            exportSeriesTableXlsx(matrix, fileBase, ts);
+        } else if (f === 'pdf') {
+            exportSeriesTablePdf(matrix, fileBase, ts);
+        }
+    }
+
+    function setSeriesExportToolbarsVisible(on) {
+        if (el.exportToolbar) el.exportToolbar.classList.toggle('d-none', !on);
+        if (el.exportToolbarTable) el.exportToolbarTable.classList.toggle('d-none', !on);
+    }
+
     function renderTable(payload) {
         if (!el.tableHead || !el.tableBody) return;
         const d = payload.data;
@@ -1171,7 +1782,9 @@
 
         renderChart(payload);
         renderTable(payload);
+        if (isStarcool && allowStarcoolSetAnalysis) hideStarcoolStatsPanel();
         if (el.chartWrap) el.chartWrap.classList.remove('d-none');
+        setSeriesExportToolbarsVisible(true);
         if (el.btnTabla) {
             el.btnTabla.style.display = '';
             if (!tableVisible && el.tableWrap) el.tableWrap.classList.add('d-none');
@@ -1187,6 +1800,8 @@
         if (el.chartWrap) el.chartWrap.classList.add('d-none');
         if (el.tableWrap) el.tableWrap.classList.add('d-none');
         if (el.btnTabla) el.btnTabla.style.display = 'none';
+        if (allowStarcoolSetAnalysis) hideStarcoolStatsPanel();
+        setSeriesExportToolbarsVisible(false);
         if (el.tableBody) el.tableBody.innerHTML = '';
         if (el.tableHead) el.tableHead.innerHTML = '';
         if (el.meta) el.meta.textContent = '';
@@ -1247,6 +1862,15 @@
         if (el.btnConsultar) el.btnConsultar.addEventListener('click', onConsultar);
         if (el.btnUlt12) el.btnUlt12.addEventListener('click', onUlt12);
         if (el.btnTabla) el.btnTabla.addEventListener('click', onToggleTabla);
+        if (el.exportXlsx) el.exportXlsx.addEventListener('click', function () { exportSeriesTable('xlsx'); });
+        if (el.exportCsv) el.exportCsv.addEventListener('click', function () { exportSeriesTable('csv'); });
+        if (el.exportPdf) el.exportPdf.addEventListener('click', function () { exportSeriesTable('pdf'); });
+        document.addEventListener('click', function (e) {
+            const btn = e.target.closest('.series-export-table');
+            if (!btn) return;
+            const fmt = btn.getAttribute('data-series-fmt');
+            if (fmt) exportSeriesTable(fmt);
+        });
         onUlt12();
     });
 })();

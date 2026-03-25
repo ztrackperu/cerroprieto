@@ -901,20 +901,45 @@ function generarParametrosPrincipales($val) {
 }
 
 /**
+ * JSON embebido para exportación Excel/CSV/PDF (módulos Starcool / Atmósfera / Madurador en AdminPage).
+ *
+ * @param array<int, array{label: string, value: string}> $rows
+ */
+function html_modulo_export_json_script($exportId, array $rows) {
+    $json = json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+    if ($json === false) {
+        return '';
+    }
+    $safeId = htmlspecialchars($exportId, ENT_QUOTES, 'UTF-8');
+    return '<script type="application/json" id="' . $safeId . '" class="d-none modulo-export-data">' . $json . '</script>';
+}
+
+/**
+ * Botones Excel (.xlsx), CSV y PDF; requiere Assets/js/exportModulosDatos.js y librerías en AdminPage.
+ *
+ * @param 'light'|'dark' $variant botones sobre cabecera clara u oscura
+ */
+function html_botones_export_modulo($slug, $titulo, $exportId, $variant = 'light') {
+    $btnClass = $variant === 'dark' ? 'btn-outline-dark' : 'btn-outline-light';
+    $safeTit = htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+    $safeId = htmlspecialchars($exportId, ENT_QUOTES, 'UTF-8');
+    $safeSlug = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $slug);
+    $safeSlug = htmlspecialchars($safeSlug, ENT_QUOTES, 'UTF-8');
+    return '<div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Exportar datos">'
+        . '<button type="button" class="btn ' . $btnClass . ' btn-export-modulo-datos" data-export-target="' . $safeId . '" data-export-title="' . $safeTit . '" data-export-file="' . $safeSlug . '" data-export-format="xlsx" title="Descargar Excel"><i class="bi bi-file-earmark-excel"></i> Excel</button>'
+        . '<button type="button" class="btn ' . $btnClass . ' btn-export-modulo-datos" data-export-target="' . $safeId . '" data-export-title="' . $safeTit . '" data-export-file="' . $safeSlug . '" data-export-format="csv" title="Descargar CSV"><i class="bi bi-filetype-csv"></i> CSV</button>'
+        . '<button type="button" class="btn ' . $btnClass . ' btn-export-modulo-datos" data-export-target="' . $safeId . '" data-export-title="' . $safeTit . '" data-export-file="' . $safeSlug . '" data-export-format="pdf" title="Descargar PDF"><i class="bi bi-file-earmark-pdf"></i> PDF</button>'
+        . '</div>';
+}
+
+/**
  * Genera tarjeta para Atmósfera Controlada
  */
 function generarTarjetaAtmosferaControlada($datos) {
-    if (!$datos) return '';
-    
-    $html = "
-    <div class='col-lg-6'>
-        <div class='card h-100 border-info'>
-            <div class='card-header bg-info text-white'>
-                <h5 class='mb-0'><i class='bi bi-cloud'></i> Atmósfera Controlada</h5>
-            </div>
-            <div class='card-body'>
-                <div class='row g-2'>";
-    
+    if (!$datos) {
+        return '';
+    }
+
     // Mapeo de campos AC con nombres descriptivos
     $camposAC = [
         'ac_1' => ['label' => 'Power', 'unit' => '', 'icon' => 'bi-toggles'],
@@ -934,7 +959,9 @@ function generarTarjetaAtmosferaControlada($datos) {
         'ac_15' => ['label' => 'SP Humedad ', 'unit' => '%', 'icon' => 'bi-activity'],
         'ac_16' => ['label' => 'SP CO2', 'unit' => '%', 'icon' => 'bi-bell-fill']
     ];
-    
+
+    $rowsExport = [];
+    $bodyHtml = '';
     foreach ($camposAC as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
@@ -942,8 +969,10 @@ function generarTarjetaAtmosferaControlada($datos) {
             $colorValor = ($valorFormateado === 'NA' || $valorFormateado === 'N/A')
                 ? 'text-muted'
                 : obtenerColorValor($valor, $campo);
-            
-            $html .= "
+            $labelExport = $info['label'] . ($info['unit'] !== '' ? ' (' . $info['unit'] . ')' : '');
+            $rowsExport[] = ['label' => $labelExport, 'value' => (string) $valorFormateado];
+
+            $bodyHtml .= "
             <div class='col-6 col-md-4'>
                 <div class='d-flex align-items-center p-2 border rounded'>
                     <i class='{$info['icon']} fs-5 text-info me-2'></i>
@@ -955,13 +984,28 @@ function generarTarjetaAtmosferaControlada($datos) {
             </div>";
         }
     }
-    
-    $html .= "
+
+    $exportId = 'export-atmosfera';
+    $scriptExport = html_modulo_export_json_script($exportId, $rowsExport);
+    $botonesExport = html_botones_export_modulo('atmosfera', 'Atmósfera Controlada', $exportId, 'light');
+
+    $html = "
+    <div class='col-lg-6'>
+        <div class='card h-100 border-info'>
+            {$scriptExport}
+            <div class='card-header bg-info text-white'>
+                <div class='d-flex flex-wrap justify-content-between align-items-center gap-2'>
+                    <h5 class='mb-0'><i class='bi bi-cloud'></i> Atmósfera Controlada</h5>
+                    {$botonesExport}
+                </div>
+            </div>
+            <div class='card-body'>
+                <div class='row g-2'>{$bodyHtml}
                 </div>
             </div>
         </div>
     </div>";
-    
+
     return $html;
 }
 
@@ -1100,21 +1144,15 @@ function generarTarjetaMaduradorPlus($datos) {
         'mad_18' => ['label' => 'PPM (etileno)', 'tipo' => 'ppm', 'icon' => 'bi-activity'],
     ];
 
-    $html = "
-    <div class='col-lg-12'>
-        <div class='card h-100 border-primary'>
-            <div class='card-header bg-primary text-white'>
-                <h5 class='mb-0'><i class='bi bi-box-seam'></i> Sistema Madurador PLUS</h5>
-            </div>
-            <div class='card-body'>
-                <div class='row g-2'>";
-
+    $rowsExport = [];
+    $bodyHtml = '';
     foreach ($camposPlus as $campo => $info) {
         $valor = property_exists($datos, $campo) ? $datos->$campo : null;
         $texto = formatearCampoMadPlus($valor, $info['tipo'], $campo);
         $color = colorTextoMadPlus($valor, $info['tipo'], $texto);
+        $rowsExport[] = ['label' => $info['label'], 'value' => (string) $texto];
 
-        $html .= "
+        $bodyHtml .= "
             <div class='col-6 col-md-4 col-lg-3'>
                 <div class='d-flex align-items-center p-2 border rounded bg-light'>
                     <i class='{$info['icon']} fs-5 text-primary me-2'></i>
@@ -1126,7 +1164,22 @@ function generarTarjetaMaduradorPlus($datos) {
             </div>";
     }
 
-    $html .= "
+    $exportId = 'export-madurador-plus';
+    $scriptExport = html_modulo_export_json_script($exportId, $rowsExport);
+    $botonesExport = html_botones_export_modulo('madurador_plus', 'Sistema Madurador PLUS', $exportId, 'light');
+
+    $html = "
+    <div class='col-lg-12'>
+        <div class='card h-100 border-primary'>
+            {$scriptExport}
+            <div class='card-header bg-primary text-white'>
+                <div class='d-flex flex-wrap justify-content-between align-items-center gap-2'>
+                    <h5 class='mb-0'><i class='bi bi-box-seam'></i> Sistema Madurador PLUS</h5>
+                    {$botonesExport}
+                </div>
+            </div>
+            <div class='card-body'>
+                <div class='row g-2'>{$bodyHtml}
                 </div>
             </div>
         </div>
@@ -1147,15 +1200,6 @@ function generarTarjetaMadurador($datos) {
         return generarTarjetaMaduradorPlus($datos);
     }
 
-    $html = "
-    <div class='col-lg-6'>
-        <div class='card h-100 border-success'>
-            <div class='card-header bg-success text-white'>
-                <h5 class='mb-0'><i class='bi bi-box-seam'></i> Sistema Madurador</h5>
-            </div>
-            <div class='card-body'>
-                <div class='row g-2'>";
-
     $camposMad = [
         'mad_1' => ['label' => 'Etileno', 'icon' => 'bi-1-circle'],
         'mad_2' => ['label' => 'SP Etileno', 'icon' => 'bi-2-circle'],
@@ -1165,14 +1209,17 @@ function generarTarjetaMadurador($datos) {
         'mad_6' => ['label' => 'Segundo', 'icon' => 'bi-check-circle'],
     ];
 
+    $rowsExport = [];
+    $bodyHtml = '';
     foreach ($camposMad as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
             $estado = $valor > 0 ? 'ACTIVO' : 'INACTIVO';
             $colorEstado = $valor > 0 ? 'text-success' : 'text-secondary';
             $bgColor = $valor > 0 ? 'bg-light-success' : '';
+            $rowsExport[] = ['label' => $info['label'], 'value' => $estado];
 
-            $html .= "
+            $bodyHtml .= "
             <div class='col-6 col-md-4'>
                 <div class='d-flex align-items-center p-2 border rounded {$bgColor}'>
                     <i class='{$info['icon']} fs-5 {$colorEstado} me-2'></i>
@@ -1185,7 +1232,22 @@ function generarTarjetaMadurador($datos) {
         }
     }
 
-    $html .= "
+    $exportId = 'export-madurador';
+    $scriptExport = html_modulo_export_json_script($exportId, $rowsExport);
+    $botonesExport = html_botones_export_modulo('madurador', 'Sistema Madurador', $exportId, 'light');
+
+    $html = "
+    <div class='col-lg-6'>
+        <div class='card h-100 border-success'>
+            {$scriptExport}
+            <div class='card-header bg-success text-white'>
+                <div class='d-flex flex-wrap justify-content-between align-items-center gap-2'>
+                    <h5 class='mb-0'><i class='bi bi-box-seam'></i> Sistema Madurador</h5>
+                    {$botonesExport}
+                </div>
+            </div>
+            <div class='card-body'>
+                <div class='row g-2'>{$bodyHtml}
                 </div>
             </div>
         </div>
@@ -1198,17 +1260,10 @@ function generarTarjetaMadurador($datos) {
  * Genera tarjeta para Starcool Cerro Prieto
  */
 function generarTarjetaStarcool($datos) {
-    if (!$datos) return '';
-    
-    $html = "
-    <div class='col-lg-6'>
-        <div class='card h-100 border-warning'>
-            <div class='card-header bg-warning text-dark'>
-                <h5 class='mb-0'><i class='bi bi-stars'></i> Starcool Cerro Prieto</h5>
-            </div>
-            <div class='card-body'>
-                <div class='row g-2'>";
-    
+    if (!$datos) {
+        return '';
+    }
+
     // Campos de Starcool
     $camposSt = [
         'st_1' => ['label' => 'CO2 Sensor 1', 'unit' => '%', 'icon' =>'bi-speedometer2'],
@@ -1225,18 +1280,20 @@ function generarTarjetaStarcool($datos) {
         'st_12' => ['label' => 'Rele 3', 'unit' => '', 'icon' => 'bi-toggle-on'],
         'st_13' => ['label' => 'Rele 4', 'unit' => '', 'icon' => 'bi-toggle-on'],
         'st_14' => ['label' => 'Rele 5', 'unit' => '', 'icon' => 'bi-toggle-on'],
-
-        
         'st_15' => ['label' => 'Rele 6', 'unit' => '', 'icon' => 'bi-toggle-on']
     ];
-    
+
+    $rowsExport = [];
+    $bodyHtml = '';
     foreach ($camposSt as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
             $valorFormateado = formatearValorSt($valor, $info['unit'], $campo);
             $colorValor = obtenerColorValorSt($valor, $campo);
-            
-            $html .= "
+            $labelExport = $info['label'] . ($info['unit'] !== '' ? ' (' . $info['unit'] . ')' : '');
+            $rowsExport[] = ['label' => $labelExport, 'value' => (string) $valorFormateado];
+
+            $bodyHtml .= "
             <div class='col-6 col-md-4'>
                 <div class='d-flex align-items-center p-2 border rounded'>
                     <i class='{$info['icon']} fs-5 text-warning me-2'></i>
@@ -1248,13 +1305,28 @@ function generarTarjetaStarcool($datos) {
             </div>";
         }
     }
-    
-    $html .= "
+
+    $exportId = 'export-starcool';
+    $scriptExport = html_modulo_export_json_script($exportId, $rowsExport);
+    $botonesExport = html_botones_export_modulo('starcool', 'Starcool Cerro Prieto', $exportId, 'dark');
+
+    $html = "
+    <div class='col-lg-6'>
+        <div class='card h-100 border-warning'>
+            {$scriptExport}
+            <div class='card-header bg-warning text-dark'>
+                <div class='d-flex flex-wrap justify-content-between align-items-center gap-2'>
+                    <h5 class='mb-0'><i class='bi bi-stars'></i> Starcool Cerro Prieto</h5>
+                    {$botonesExport}
+                </div>
+            </div>
+            <div class='card-body'>
+                <div class='row g-2'>{$bodyHtml}
                 </div>
             </div>
         </div>
     </div>";
-    
+
     return $html;
 }
 

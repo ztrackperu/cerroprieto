@@ -144,5 +144,21 @@ if (!empty($_GET['url'])) {
 } 
 ?>
 <script src="<?php echo base_url;?>Assets/js/generales.js"></script>
+<?php
+$urlFooter = isset($_GET['url']) ? (string) $_GET['url'] : '';
+$segFooter = $urlFooter !== '' ? explode('/', trim($urlFooter, '/')) : [];
+$primerSegmento = isset($segFooter[0]) ? $segFooter[0] : '';
+if ($primerSegmento === 'AdminPage') {
+    echo '<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>' . "\n";
+    echo '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>' . "\n";
+    echo '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>' . "\n";
+    echo '<script src="' . base_url . 'Assets/js/exportModulosDatos.js"></script>' . "\n";
+}
+if ($primerSegmento === 'SeriesSectores') {
+    echo '<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>' . "\n";
+    echo '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>' . "\n";
+    echo '<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>' . "\n";
+}
+?>
 </body>
 </html>

@@ -10,6 +10,8 @@ if (!in_array($seriesSector, series_sectores_permitidos(), true)) {
 $labelsMap = mapa_etiquetas_series_por_sector($seriesSector);
 $pageTitle = series_sector_titulo($seriesSector);
 $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
+$usuarioSeries = isset($_SESSION['usuario_ztrack']) ? (string) $_SESSION['usuario_ztrack'] : '';
+$seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
 ?>
 <?php include 'Views/templates/navbar.php'; ?>
 <div class="px-2 py-3">
@@ -47,6 +49,17 @@ $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
                         <button type="button" class="btn btn-outline-dark btn-sm" id="seriesBtnTabla" style="display:none;">
                             <i class="bi bi-table me-1"></i> <span id="seriesBtnTablaText">Ver tabla</span>
                         </button>
+                        <div class="btn-group btn-group-sm d-none" id="seriesExportToolbar" role="group" aria-label="Exportar tabla de datos">
+                            <button type="button" class="btn btn-outline-success" id="seriesExportXlsx" title="Descargar Excel">
+                                <i class="bi bi-file-earmark-excel me-1"></i>Excel
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary" id="seriesExportCsv" title="Descargar CSV">
+                                <i class="bi bi-filetype-csv me-1"></i>CSV
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" id="seriesExportPdf" title="Descargar PDF">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <p class="small text-muted mt-2 mb-0">Sin fechas, el servicio devuelve las últimas 12 horas. Formato enviado al API: <code>DD-MM-YYYY_HH-mm-ss</code>.</p>
@@ -62,7 +75,7 @@ $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
         <div id="seriesStarcoolControls" class="card mb-3 d-none">
             <div class="card-header py-2">
                 <span class="fw-semibold">Series en el gráfico (Starcool)</span>
-                <span class="text-muted small ms-2">Los relés no se grafican. Humedad usa eje derecho 0–100 %.</span>
+                <span class="text-muted small ms-2">Relés fuera del gráfico. Eje Y izquierdo (CO₂/O₂) fijo 0–100 %; humedad eje derecho 0–100 %. Nulos empalman. SET CO1–3 / O1–3 en el gráfico.<?php if ($seriesAllowSetAnalysis): ?> Botón <strong>Procesar</strong>: estadísticas vs SET (±10 %).<?php endif; ?></span>
             </div>
             <div class="card-body py-2" id="seriesStarcoolControlsBody"></div>
         </div>
@@ -70,7 +83,7 @@ $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
         <div id="seriesAtmosferaControls" class="card mb-3 d-none">
             <div class="card-header py-2">
                 <span class="fw-semibold">Series en el gráfico (Atmósfera)</span>
-                <span class="text-muted small ms-2">Temperaturas eje izquierdo (Y1), porcentajes eje derecho (Y2), ventilación CFM (Y3). Power no se grafica.</span>
+                <span class="text-muted small ms-2">Temperaturas eje izquierdo (Y1); gases/humedad eje derecho (Y2) fijo 0–100 %; ventilación CFM (Y3). Power no se grafica.</span>
             </div>
             <div class="card-body py-2" id="seriesAtmosferaControlsBody"></div>
         </div>
@@ -93,8 +106,30 @@ $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
             </div>
         </div>
 
+        <?php if ($seriesAllowSetAnalysis): ?>
+        <div id="seriesStarcoolStatsWrap" class="card mb-3 d-none border-primary">
+            <div class="card-header py-2 bg-primary text-white">
+                <span class="fw-semibold"><i class="bi bi-calculator me-1"></i> Análisis SET vs lecturas (Starcool)</span>
+            </div>
+            <div class="card-body py-3" id="seriesStarcoolStatsBody"></div>
+        </div>
+        <?php endif; ?>
+
         <div id="seriesTableWrap" class="card d-none">
-            <div class="card-header fw-semibold">Tabla de datos</div>
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span class="fw-semibold">Tabla de datos</span>
+                <div class="btn-group btn-group-sm d-none" id="seriesExportToolbarTable" role="group" aria-label="Exportar tabla">
+                    <button type="button" class="btn btn-outline-success btn-sm series-export-table" data-series-fmt="xlsx" title="Excel">
+                        <i class="bi bi-file-earmark-excel"></i> Excel
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm series-export-table" data-series-fmt="csv" title="CSV">
+                        <i class="bi bi-filetype-csv"></i> CSV
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm series-export-table" data-series-fmt="pdf" title="PDF">
+                        <i class="bi bi-file-earmark-pdf"></i> PDF
+                    </button>
+                </div>
+            </div>
             <div class="card-body p-0">
                 <div class="table-responsive" style="max-height: 480px;">
                     <table class="table table-sm table-striped table-hover mb-0" id="seriesHistoriaTable">
@@ -110,5 +145,6 @@ $labelsJson = json_encode($labelsMap, JSON_UNESCAPED_UNICODE);
 <script>
 window.SERIES_SECTOR = <?php echo json_encode($seriesSector, JSON_UNESCAPED_UNICODE); ?>;
 window.SERIES_LABELS = <?php echo $labelsJson; ?>;
+window.SERIES_ALLOW_SET_ANALYSIS = <?php echo $seriesAllowSetAnalysis ? 'true' : 'false'; ?>;
 </script>
 <?php include 'Views/templates/footer.php'; ?>

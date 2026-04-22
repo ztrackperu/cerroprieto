@@ -167,9 +167,30 @@ class AdminPage extends Controller
         if (!is_array($data)) {
             $data = array();
         }
-        $imei_oficial = " ";
-        $dataPlus = $this->model->ConsultarUltimaTrama($imei_oficial);
-        $decPlus = json_decode($dataPlus);
+        /** Total en empresa (la API puede devolver miles; la UI principal solo usa el último bloque). */
+        $totalDispositivosLista = count($data);
+        /** Último ítem de la lista: es el que corresponde a “el último” en flujos que recorren en orden. */
+        $ultimo = null;
+        if ($totalDispositivosLista > 0) {
+            $ultimo = $data[$totalDispositivosLista - 1];
+            if (!is_object($ultimo)) {
+                $ultimo = null;
+            }
+        }
+        /** Trama en vivo: `TermoKing/ConsultarUltimaTrama/{imei}` (url_nueva). Prioridad: IMEI del último contenedor; si no hay, CERRO_PRIETO_SERIES_IMEI / constante. */
+        $imeiParaTrama = '';
+        if ($ultimo !== null) {
+            if (isset($ultimo->imei) && trim((string) $ultimo->imei) !== '') {
+                $imeiParaTrama = trim((string) $ultimo->imei);
+            } elseif (isset($ultimo->IMEI) && trim((string) $ultimo->IMEI) !== '') {
+                $imeiParaTrama = trim((string) $ultimo->IMEI);
+            }
+        }
+        if ($imeiParaTrama === '' && defined('cerro_prieto_series_imei') && (string) cerro_prieto_series_imei !== '') {
+            $imeiParaTrama = trim((string) cerro_prieto_series_imei);
+        }
+        $rawTrama = $this->model->ConsultarUltimaTrama($imeiParaTrama);
+        $decPlus = json_decode($rawTrama);
         if (!is_object($decPlus) || !isset($decPlus->data) || $decPlus->data === null) {
             $dataPlus = (object) array();
         } else {
@@ -177,43 +198,66 @@ class AdminPage extends Controller
         }
         $conjunto = ContenedorGruposEspeciales($dataPlus);
         
-        $text ="";
-        $data2 =[];
+        $text = "";
         $url = base_url;
-        $fecha=[];
-        $dataz="";
+        $fecha = array();
+        $dataz = "";
         $enlace = null;
-        
-        foreach($data as $val){
-            $tipo = $val->extra_1;
-            $enlace = ContenedorMadurador_2($val);
-            $fecha =  determinarEstado($val->ultima_fecha ,$id =1,$fecha);
-            $text.=$enlace['text'];
-            $dataz=$val;
-            /*
-            array_push($data2 ,array(
-                'latitud'=>$enlace['latitud'],
-                'longitud'=>$enlace['longitud'],
-                'nombre_contenedor'=> $enlace['nombre_contenedor'],
-            ));
-            */
+        if ($ultimo !== null) {
+            $tipo = $ultimo->extra_1;
+            $enlace = ContenedorMadurador_2($ultimo);
+            $fecha = determinarEstado($ultimo->ultima_fecha, $id = 1, $fecha);
+            $text = $enlace['text'];
+            $dataz = $ultimo;
         }
-        
-        //$data->text = $text;
-        $data1 =array(
-            //'data'=>tarjetamadurador($val)
-            'data'=>$data,
-            'text'=>$text,
-            'text_extra'=>$enlace,
-            'text_ok'=>$conjunto['text2'],
-            "dataPlus"=>$dataPlus,
-            'extraer'=>$_SESSION['data'],
-            //'estadofecha'=>$fecha
+        /** Solo el último dispositivo para no inflar JSON ni recorrer miles de filas en el cliente. */
+        $dataRespuesta = ($ultimo !== null) ? array($ultimo) : array();
+        /** Sesión: solo la fila del último dispositivo (por telemetria_id), no toda la lista. */
+        $extraerRespuesta = array();
+        if ($ultimo !== null && isset($ultimo->telemetria_id) && !empty($_SESSION['data']) && is_array($_SESSION['data'])) {
+            foreach ($_SESSION['data'] as $k => $row) {
+                if (is_object($row) && isset($row->telemetria_id)
+                    && (string) $row->telemetria_id === (string) $ultimo->telemetria_id) {
+                    $extraerRespuesta[$k] = $row;
+                    break;
+                }
+            }
+        }
+        $data1 = array(
+            'data' => $dataRespuesta,
+            'total_dispositivos' => $totalDispositivosLista,
+            'imei_trama' => $imeiParaTrama,
+            'text' => $text,
+            'text_extra' => $enlace,
+            'text_ok' => isset($conjunto['text2']) ? $conjunto['text2'] : '',
+            'dataPlus' => $dataPlus,
+            'extraer' => $extraerRespuesta,
         );
-        
-        echo json_encode($data1, JSON_UNESCAPED_UNICODE);
-        die();
 
+        $flags = JSON_UNESCAPED_UNICODE;
+        if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+            $flags |= JSON_INVALID_UTF8_SUBSTITUTE;
+        }
+        $jsonOut = json_encode($data1, $flags);
+        if ($jsonOut === false) {
+            unset($data1['extraer']);
+            $jsonOut = json_encode($data1, $flags);
+        }
+        if ($jsonOut === false) {
+            $jsonOut = json_encode(
+                array(
+                    'data' => array(),
+                    'text' => '',
+                    'text_extra' => null,
+                    'text_ok' => '<p class="text-muted">Respuesta de dispositivos no pudo serializarse. Verifique la sesión y la API.</p>',
+                    'dataPlus' => (object) array(),
+                ),
+                $flags
+            );
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo $jsonOut;
+        die();
     }   
     public function ListaD() {
         $empId = (isset($_SESSION['empresa_id']) && (int) $_SESSION['empresa_id'] > 0)

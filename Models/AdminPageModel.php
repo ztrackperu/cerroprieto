@@ -63,8 +63,15 @@ class AdminPageModel extends Query{
         if (!defined('url_nueva') || url_nueva === null || !is_string(url_nueva) || trim(url_nueva) === '') {
             return json_encode(array('data' => (object) array()));
         }
+        if ($imei === null || (is_string($imei) && trim($imei) === '')) {
+            return json_encode(array('data' => (object) array()));
+        }
+        $imei = is_string($imei) ? trim($imei) : (string) $imei;
+        if ($imei === '') {
+            return json_encode(array('data' => (object) array()));
+        }
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, rtrim(url_nueva, '/') . "/TermoKing/ConsultarUltimaTrama/" . $imei);
+        curl_setopt($ch, CURLOPT_URL, rtrim(url_nueva, '/') . "/TermoKing/ConsultarUltimaTrama/" . rawurlencode($imei));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
         curl_setopt($ch, CURLOPT_TIMEOUT, 25);

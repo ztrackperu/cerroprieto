@@ -1,6 +1,13 @@
 <?php 
     function formatearFecha($fecha) {
-        $dateTime = new DateTime($fecha);   
+        if ($fecha === null || $fecha === '' || !is_string($fecha)) {
+            return '—';
+        }
+        try {
+            $dateTime = new DateTime(trim($fecha));
+        } catch (Exception $e) {
+            return '—';
+        }
         return $dateTime->format('H:i:s d/m/Y');
     }
     function status($dato){
@@ -141,11 +148,26 @@ function validateDate($date, $format = 'Y-m-d\TH:i:s'){
     //return $d && $d->format($format) == $date;
 }
 function gmtFecha($val){
-    if($_SESSION['utc']!=300){
-        $val1 =  strtotime($val);
-        $dif =300-$_SESSION['utc'];
-        $minutes = $dif." minutes";
-        $puntoA1 = strtotime($minutes,$val1);
+    if ($val === null || $val === false || (is_string($val) && trim($val) === '')) {
+        return $val;
+    }
+    if (!is_string($val) && (is_int($val) || is_float($val))) {
+        $val = (string) $val;
+    }
+    if (!is_string($val)) {
+        return $val;
+    }
+    if (isset($_SESSION['utc']) && $_SESSION['utc'] != 300) {
+        $val1 = strtotime($val);
+        if ($val1 === false) {
+            return $val;
+        }
+        $dif = 300 - (int) $_SESSION['utc'];
+        $minutes = $dif . ' minutes';
+        $puntoA1 = strtotime($minutes, $val1);
+        if ($puntoA1 === false) {
+            return $val;
+        }
         $val = date('Y-m-d\TH:i:s', $puntoA1);
     }
     return $val;
@@ -155,10 +177,25 @@ function determinarEstado($ultima_fecha ,$id,$est) {
     if($est==[]){
         $est=[0,0,0];
     }
+    if ($ultima_fecha === null || $ultima_fecha === false || (is_string($ultima_fecha) && trim($ultima_fecha) === '')) {
+        $est[2] = (isset($est[2]) ? $est[2] : 0) + 1;
+        return $est;
+    }
+    if (!is_string($ultima_fecha) && (is_int($ultima_fecha) || is_float($ultima_fecha))) {
+        $ultima_fecha = (string) $ultima_fecha;
+    } elseif (!is_string($ultima_fecha)) {
+        $est[2] = (isset($est[2]) ? $est[2] : 0) + 1;
+        return $est;
+    }
     date_default_timezone_set('UTC');
-    $hoy = date("Y-m-d H:i:s");                   
+    $hoy = date("Y-m-d H:i:s");
     $fechaActual = new DateTime($hoy);
-    $fechaUltima = new DateTime($ultima_fecha);
+    try {
+        $fechaUltima = new DateTime($ultima_fecha);
+    } catch (Exception $e) {
+        $est[2] = (isset($est[2]) ? $est[2] : 0) + 1;
+        return $est;
+    }
     #$diferencia = $fechaActual->getTimestamp() - $fechaUltima->getTimestamp();
     $diferencia = $fechaActual->diff($fechaUltima);
     
@@ -184,9 +221,17 @@ function porNormal($val){
     if($val>=0 && $val<100){$valor=$val ;}else{$valor="NA";}
     return $valor;
 }
-function val_eti($val){
-    if($val>=0 && $val<280){$valor=$val ;}else{$valor="NA";}
-    return $valor;
+function val_eti($val)
+{
+    if ($val === null || $val === '' || (is_string($val) && strtoupper(trim($val)) === 'NA')) {
+        return 'NA';
+    }
+    if (!is_numeric($val)) {
+        return 'NA';
+    }
+    $n = (float) $val;
+    /** Admin: no mostrar PPM (etileno) por encima de 250. */
+    return ($n >= 0 && $n <= 250) ? $val : 'NA';
 }
 function validateP($val){
     /*
@@ -213,27 +258,45 @@ function ContenedorPlantilla($val,$url=0, $tipo=1){
     return $result;
 }
 function fechaPro($val){
-    //echo $val;
-    //previa validacion de GMT  "Y-m-d\TH:i:s
-    $_SESSION['utc']=300;
-    if($_SESSION['utc']!=300){
-        $val1 =  strtotime($val);
-        $dif =300-(int)$_SESSION['utc'];
-        $minutes = $dif." minutes";
-        $puntoA1 = strtotime($minutes,$val1);
+    // Formato origen: ISO "Y-m-d\TH:i:s" (T entre fecha y hora). Nunca pasar null a explode (PHP 8.1+).
+    if ($val === null || $val === false) {
+        return '—';
+    }
+    if (is_string($val)) {
+        $val = trim($val);
+    } elseif (is_int($val) || is_float($val)) {
+        $val = trim((string) $val);
+    } else {
+        return '—';
+    }
+    if ($val === '') {
+        return '—';
+    }
+    // previa validacion de GMT  "Y-m-d\TH:i:s
+    $_SESSION['utc'] = 300;
+    if ($_SESSION['utc'] != 300) {
+        $val1 = strtotime($val);
+        if ($val1 === false) {
+            return '—';
+        }
+        $dif = 300 - (int) $_SESSION['utc'];
+        $minutes = $dif . ' minutes';
+        $puntoA1 = strtotime($minutes, $val1);
+        if ($puntoA1 === false) {
+            return '—';
+        }
         $val = date('Y-m-d\TH:i:s', $puntoA1);
     }
-    $ultima = explode("T",$val) ;
-    $fech = explode("-",$ultima[0]);
-    //echo $ultima[0];
-    //echo " luis ";
-    //echo $fech;
-    $fech1 = $fech[2]."/".$fech[1]."/".$fech[0] ; 
-    //echo $fech1;
-    $fechita =$ultima[1]." - ".$fech1;           
-
-    //$fech1 = $fech[2]."/".$fech[1]."/".$fech[0] ; 
-    //$fechita =$ultima[1]." del  ".$fech1;
+    $ultima = explode('T', $val);
+    if (!isset($ultima[0], $ultima[1]) || $ultima[0] === '' || $ultima[1] === '') {
+        return '—';
+    }
+    $fech = explode('-', $ultima[0]);
+    if (!isset($fech[0], $fech[1], $fech[2])) {
+        return '—';
+    }
+    $fech1 = $fech[2] . '/' . $fech[1] . '/' . $fech[0];
+    $fechita = $ultima[1] . ' - ' . $fech1;
     return $fechita;
 }
 
@@ -263,9 +326,22 @@ function horas_simuladas($dato){
 }
 
 function evaluarEstado($dato){
+    if ($dato === null || $dato === false) {
+        return "OFFLINE";
+    }
+    if (is_int($dato) || is_float($dato)) {
+        $dato = (string) $dato;
+    }
+    if (!is_string($dato) || trim($dato) === '') {
+        return "OFFLINE";
+    }
+    $dato = trim($dato);
     $fecha_de_hoy = date("Y-m-d H:i:s");
     $fecha1 = strtotime($fecha_de_hoy);
     $fecha2 = strtotime($dato);
+    if ($fecha2 === false || $fecha1 === false) {
+        return "OFFLINE";
+    }
     $diferencia = $fecha1 - $fecha2;
 
     if($diferencia <= 30*60){
@@ -279,9 +355,22 @@ function evaluarEstado($dato){
 }
 
 function evaluarEstadoColor($dato){
+    if ($dato === null || $dato === false) {
+        return "text-danger";
+    }
+    if (is_int($dato) || is_float($dato)) {
+        $dato = (string) $dato;
+    }
+    if (!is_string($dato) || trim($dato) === '') {
+        return "text-danger";
+    }
+    $dato = trim($dato);
     $fecha_de_hoy = date("Y-m-d H:i:s");
     $fecha1 = strtotime($fecha_de_hoy);
     $fecha2 = strtotime($dato);
+    if ($fecha2 === false || $fecha1 === false) {
+        return "text-danger";
+    }
     $diferencia = $fecha1 - $fecha2;
 
     if($diferencia <= 30*60){
@@ -295,10 +384,29 @@ function evaluarEstadoColor($dato){
 }
 
 function convertirFecha($fecha){
+    if ($fecha === null || $fecha === false || (is_string($fecha) && trim($fecha) === '')) {
+        return '—';
+    }
+    if (!is_string($fecha)) {
+        if (is_int($fecha) || is_float($fecha)) {
+            $fecha = (string) $fecha;
+        } else {
+            return '—';
+        }
+    }
     $fecha = explode("T", $fecha);
+    if (!isset($fecha[0], $fecha[1])) {
+        return '—';
+    }
     $fecha1 = explode("-", $fecha[0]);
-    $hora = explode(".", $fecha[1]);
-    $hora = $hora[0];
+    if (!isset($fecha1[0], $fecha1[1], $fecha1[2])) {
+        return '—';
+    }
+    $partesHora = explode(".", $fecha[1]);
+    $hora = isset($partesHora[0]) ? $partesHora[0] : '';
+    if ($hora === '') {
+        return '—';
+    }
     $hoy = $fecha1[2] . "-" . $fecha1[1] . "-" . $fecha1[0] . " " . $hora;
     return $hoy;
 }
@@ -314,14 +422,18 @@ function ContenedorMadurador_2($val, $url=0){
     $supply = $val->temp_supply_1;
     $s_temp = $val->set_point;
 
-    // sp_ethyleno y etileno
-    if(abs($etileno - $sp_ethyleno) <= $sp_ethyleno * 0.10){
-        $etileno_color = "text-success";
-    }else if(abs($etileno - $sp_ethyleno) <= $sp_ethyleno * 0.25){
-        $etileno_color = "text-warning";
-    }else{
-        $etileno_color = "text-secondary";
-    }   
+    // sp_ethyleno y etileno (PPM &gt; 250 no se muestran: mismo criterio que val_eti)
+    if (!is_numeric($etileno) || (float) $etileno < 0 || (float) $etileno > 250) {
+        $etileno_color = 'text-muted';
+    } elseif (is_numeric($sp_ethyleno) && $sp_ethyleno != 0.0
+        && abs((float) $etileno - (float) $sp_ethyleno) <= (float) $sp_ethyleno * 0.10) {
+        $etileno_color = 'text-success';
+    } elseif (is_numeric($sp_ethyleno) && $sp_ethyleno != 0.0
+        && abs((float) $etileno - (float) $sp_ethyleno) <= (float) $sp_ethyleno * 0.25) {
+        $etileno_color = 'text-warning';
+    } else {
+        $etileno_color = 'text-secondary';
+    }
     // sp_co2 y co2
     if(abs($co2 - $sp_co2) <= $sp_co2 * 0.10){
         $co2_color = "text-success";
@@ -1096,7 +1208,7 @@ function formatearCampoMadPlus($valor, $tipo, $campo = '') {
                 return 'NA';
             }
             $n = (float) $valor;
-            return ($n >= 0 && $n <= 350) ? number_format($n, 1) . ' ppm' : 'NA';
+            return ($n >= 0 && $n <= 250) ? number_format($n, 1) . ' ppm' : 'NA';
         default:
             return 'NA';
     }

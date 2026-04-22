@@ -75,10 +75,26 @@ const estado = new EstadoDispositivos();
 // ==========================================
 const Utils = {
     async fetchData(endpoint, method = 'GET') {
+        const url = CONFIG.BASE_URL + endpoint;
         try {
-            const response = await fetch(CONFIG.BASE_URL + endpoint, { method });
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return await response.json();
+            const response = await fetch(url, { method });
+            const text = await response.text();
+            if (!response.ok) {
+                console.error(`fetch ${endpoint}: HTTP ${response.status}`, text ? text.slice(0, 600) : '');
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            if (!text || !String(text).trim()) {
+                console.warn('fetch: cuerpo vacío', url);
+                return { data: [], text: '', text_ok: '' };
+            }
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (parseErr) {
+                console.error(`JSON inválido en ${endpoint}:`, (text || '').slice(0, 500));
+                throw new Error('La respuesta del servidor no es JSON válido (¿error PHP o HTML?).');
+            }
+            return data;
         } catch (error) {
             console.error(`Error fetching ${endpoint}:`, error);
             throw error;
@@ -166,7 +182,7 @@ class ActualizadorTarjetas {
         /** @type {Record<number, Record<string, string>>} último texto mostrado por campo (para conservar si llega NA) */
         this.ultimoTextoValor = {};
         this.camposConfig = [
-            { campo: 'ethylene', selector: 'ethyleno', formato: ' ppm', iconSelector: 'eti_icon' },
+            { campo: 'ethylene', selector: 'ethyleno', formato: ' ppm', iconSelector: 'eti_icon', validacion: this.validarEtilenoPpm },
             { campo: 'co2_reading', selector: 'co2', formato: ' %', iconSelector: 'co2_icon', validacion: this.validarCO2 },
             { campo: 'temp_supply', selector: 'supply', formato: ' F°', iconSelector: 'supply_icon', usarCampo: 'temp_supply_1' },
             { campo: 'return_air', selector: 'return', formato: ' F°', iconSelector: 'return_icon' },
@@ -186,6 +202,21 @@ class ActualizadorTarjetas {
 
     validarCO2(valor) {
         return (valor >= 0 && valor <= 30) ? valor : 'NA';
+    }
+
+    /** Etileno (PPM): no mostrar lecturas estrictamente mayores a 250 (misma regla que val_eti en PHP). */
+    validarEtilenoPpm(valor) {
+        if (Utils.esValorNa(valor)) {
+            return valor;
+        }
+        const n = parseFloat(String(valor).replace(/^\+/, ''));
+        if (!Number.isFinite(n)) {
+            return 'NA';
+        }
+        if (n > 250) {
+            return 'NA';
+        }
+        return valor;
     }
 
     /**
@@ -282,21 +313,25 @@ class GestorDispositivos {
     async cargarDispositivosIniciales() {
         try {
             const data = await Utils.fetchData(CONFIG.ENDPOINTS.LISTA_DISPOSITIVOS);
-            console.log('Dispositivos cargados:', data);
+            if (!data || typeof data !== 'object') {
+                throw new Error('Respuesta de lista de dispositivos no es un objeto JSON.');
+            }
+            const total = data.total_dispositivos != null ? data.total_dispositivos : (Array.isArray(data.data) ? data.data.length : 0);
+            const imeiTr = data.imei_trama != null && String(data.imei_trama).trim() !== '' ? data.imei_trama : '(ninguno)';
+            console.log(
+                'AdminPage: ' + total + ' dispositivo(s) en lista; trama TermoKing/ConsultarUltimaTrama para IMEI:',
+                imeiTr,
+                '(text_ok = bloque principal)'
+            );
             
             const contenidoPrincipal = document.getElementById('contenidoPrincipal');
-            //contenidoExtra
             const contenidoExtra = document.getElementById('contenidoExtra');
             
             if (contenidoExtra) {
-                //console.log(data.text_ok);
-                //console.log("aqui estamos en adminpage js");
-                console.log(data.text_ok);
-                contenidoExtra.innerHTML = data.text_ok;
+                const html = data.text_ok != null && data.text_ok !== undefined ? data.text_ok : '';
+                contenidoExtra.innerHTML = typeof html === 'string' ? html : String(html);
             }
-            if (contenidoPrincipal) {
-                //contenidoPrincipal.innerHTML = data.text;
-            }
+            /* #contenidoPrincipal oculto en Admin (d-none en vista); no inyectar HTML allí. */
         } catch (error) {
             console.error('Error cargando dispositivos:', error);
             alert('Error al cargar los dispositivos. Por favor, recarga la página.');

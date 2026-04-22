@@ -60,42 +60,129 @@ class AdminPageModel extends Query{
 
     public function ConsultarUltimaTrama($imei)
     {
+        if (!defined('url_nueva') || url_nueva === null || !is_string(url_nueva) || trim(url_nueva) === '') {
+            return json_encode(array('data' => (object) array()));
+        }
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, url_nueva."/TermoKing/ConsultarUltimaTrama/".$imei);
+        curl_setopt($ch, CURLOPT_URL, rtrim(url_nueva, '/') . "/TermoKing/ConsultarUltimaTrama/" . $imei);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 25);
         $res = curl_exec($ch);
-        curl_close($ch);   
+        curl_close($ch);
+        if ($res === false || $res === null || $res === '') {
+            return json_encode(array('data' => (object) array()));
+        }
+        $test = json_decode($res);
+        if (!is_object($test) || !property_exists($test, 'data')) {
+            return json_encode(array('data' => (object) array()));
+        }
         return $res;
     }
 
     public function ListaDispositivoEmpresa($id)
     {
+        if (!defined('urlapiMysql') || urlapiMysql === null || !is_string(urlapiMysql) || trim(urlapiMysql) === '') {
+            return json_encode(array('data' => array()));
+        }
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, urlapiMysql."/contenedores/ListaDispositivoEmpresa/".$id);
+        curl_setopt($ch, CURLOPT_URL, rtrim(urlapiMysql, '/') . "/contenedores/ListaDispositivoEmpresa/" . (int) $id);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         $res = curl_exec($ch);
-        curl_close($ch);   
+        curl_close($ch);
+        if ($res === false || $res === null || $res === '') {
+            return json_encode(array('data' => array()));
+        }
+        $test = json_decode($res);
+        if (!is_object($test) || !property_exists($test, 'data')) {
+            return json_encode(array('data' => array()));
+        }
         return $res;
     }
     public function VerificarLive($data)
     {
+        if (!defined('urlapiMysql') || urlapiMysql === null || !is_string(urlapiMysql) || trim(urlapiMysql) === '') {
+            return json_encode(array('data' => array()));
+        }
         $ch = curl_init();
-        $data =json_encode($data);
-        curl_setopt($ch, CURLOPT_URL, urlapiMysql."/contenedores/VerificarLive/");
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type:application/json'));
+        $payload = json_encode($data);
+        curl_setopt($ch, CURLOPT_URL, rtrim(urlapiMysql, '/') . "/contenedores/VerificarLive/");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         $res = curl_exec($ch);
-        curl_close($ch);   
+        curl_close($ch);
+        if ($res === false || $res === null || $res === '') {
+            return json_encode(array('data' => array()));
+        }
+        $test = json_decode($res);
+        if (!is_object($test) || !property_exists($test, 'data')) {
+            return json_encode(array('data' => array()));
+        }
         return $res;
     }
-    public function ListaComandos(){
+    /**
+     * Lista de comandos vía API Mongo2. Si la URL no está definida, curl falla o la respuesta
+     * no es un JSON con data.lista (p. ej. "Endpoint no encontrado"), se devuelve estructura vacía.
+     */
+    public function ListaComandos()
+    {
+        $vacio = array(
+            'data' => array(
+                'lista' => array(),
+                'contador' => 0,
+            ),
+        );
+        $jsonVacio = json_encode($vacio, JSON_UNESCAPED_UNICODE);
+
+        if (!defined('urlapiMongo2') || urlapiMongo2 === null || !is_string(urlapiMongo2) || trim(urlapiMongo2) === '') {
+            return $jsonVacio;
+        }
+
+        $url = rtrim(urlapiMongo2, '/') . '/Comandos/JhonVena/866782048942516';
         $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, urlapiMongo2."/Comandos/JhonVena/866782048942516");
+        curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
         $res = curl_exec($ch);
-        curl_close($ch);   
-        return $res;
+        $err = curl_errno($ch);
+        curl_close($ch);
+
+        if ($err !== 0 || $res === false || $res === null || $res === '') {
+            return $jsonVacio;
+        }
+
+        $dec = json_decode($res, true);
+        if (!is_array($dec)) {
+            return $jsonVacio;
+        }
+
+        $msg = null;
+        if (isset($dec['message']) && is_string($dec['message'])) {
+            $msg = $dec['message'];
+        } elseif (isset($dec['msg']) && is_string($dec['msg'])) {
+            $msg = $dec['msg'];
+        }
+        if ($msg !== null && (stripos($msg, 'no encontrad') !== false || stripos($msg, 'endpoint') !== false)) {
+            return $jsonVacio;
+        }
+
+        if (!isset($dec['data']) || !is_array($dec['data'])) {
+            return $jsonVacio;
+        }
+        if (!isset($dec['data']['lista']) || !is_array($dec['data']['lista'])) {
+            $dec['data']['lista'] = array();
+        }
+        if (!isset($dec['data']['contador'])) {
+            $dec['data']['contador'] = count($dec['data']['lista']);
+        }
+
+        return json_encode($dec, JSON_UNESCAPED_UNICODE);
     }
     public function generarComandos($cantidad){
         $cards = array();

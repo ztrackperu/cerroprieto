@@ -3,7 +3,7 @@
  * Starcool: relés no se grafican; CO2/O2 eje Y izquierdo 0–100 %; humedad eje Y1 derecho 0–100 %.
  * Starcool: spanGaps para no cortar la línea en nulos; SET CO1–3 / O1–3 como líneas horizontales de referencia (%).
  * Atmósfera: Power no se grafica; Y1 temperaturas, Y2 %, Y3 ventilación CFM; por defecto Set Point, Suministro y Retorno.
- * Madurador: igual; Y4 etileno (ppm) 0–300; hora inyección en Y1; Power no se grafica.
+ * Madurador: igual; Y4 etileno (ppm) 0–300; lecturas > 300 ppm se tratan como nulos (no distorsionan el eje); hora inyección en Y1; Power no se grafica.
  */
 (function () {
     const sector = typeof window.SERIES_SECTOR === 'string' ? window.SERIES_SECTOR : 'starcool_cerro_prieto';
@@ -69,6 +69,22 @@
 
     const MADURADOR_ETILENO_MIN = 0;
     const MADURADOR_ETILENO_MAX = 300;
+
+    /** Etileno (mad_18): > 300 ppm se considera inválido (mismo criterio que el eje 0–300) */
+    function maduradorEtilenoPpmExcedeEscala(v) {
+        if (v === null || v === undefined || v === '') return false;
+        const n = Number(v);
+        return Number.isFinite(n) && n > MADURADOR_ETILENO_MAX;
+    }
+
+    /** y para Chart.js: etileno fuera de rango → null (hueco en la serie) */
+    function yValueMaduradorChart(key, v) {
+        if (v === null || v === undefined || v === '') return null;
+        const y = Number(v);
+        if (!Number.isFinite(y)) return null;
+        if (key === MADURADOR_ETILENO_KEY && y > MADURADOR_ETILENO_MAX) return null;
+        return y;
+    }
 
     const MADURADOR_DEFAULT_ON = new Set(['mad_2', 'mad_3', 'mad_4']);
 
@@ -1401,11 +1417,10 @@
             const datasets = chartKeys.map(function (key) {
                 const arr = seriesObj[key];
                 const pts = fechas.map(function (t, i) {
-                    const v = arr[i];
-                    const y = v === null || v === undefined || v === '' ? null : Number(v);
+                    const y = yValueMaduradorChart(key, arr[i]);
                     return {
                         x: new Date(t),
-                        y: Number.isFinite(y) ? y : null
+                        y: y
                     };
                 });
                 const ci = colorIndexForKey(key, colorOrder);
@@ -1593,7 +1608,11 @@
             const row = [String(t)];
             keys.forEach(function (key) {
                 const v = seriesObj[key][rowIdx];
-                row.push(v === null || v === undefined ? '' : String(v));
+                if (isMadurador && key === MADURADOR_ETILENO_KEY && maduradorEtilenoPpmExcedeEscala(v)) {
+                    row.push('');
+                } else {
+                    row.push(v === null || v === undefined ? '' : String(v));
+                }
             });
             return row;
         });
@@ -1737,7 +1756,11 @@
             keys.forEach(function (key) {
                 const td = document.createElement('td');
                 const v = seriesObj[key][rowIdx];
-                td.textContent = v === null || v === undefined ? '—' : String(v);
+                if (isMadurador && key === MADURADOR_ETILENO_KEY && maduradorEtilenoPpmExcedeEscala(v)) {
+                    td.textContent = '—';
+                } else {
+                    td.textContent = v === null || v === undefined ? '—' : String(v);
+                }
                 tr.appendChild(td);
             });
             el.tableBody.appendChild(tr);

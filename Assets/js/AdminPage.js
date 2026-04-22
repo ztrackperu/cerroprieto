@@ -306,14 +306,12 @@ class GestorDispositivos {
     async obtenerActualizacionesLive() {
         try {
             const result = await Utils.fetchData(CONFIG.ENDPOINTS.LIVE_DATA);
-            
-            if (result && result.length > 0) {
-                // Procesar en batch para mejor rendimiento
-                result.forEach(res => this.actualizadorTarjetas.actualizarTarjeta(res));
-                console.log(`Actualización live: ${result.length} dispositivos`);
+            const list = Array.isArray(result) ? result : [];
+            if (list.length > 0) {
+                list.forEach((res) => this.actualizadorTarjetas.actualizarTarjeta(res));
+                console.log(`Actualización live: ${list.length} dispositivos`);
             }
-            
-            return result;
+            return list;
         } catch (error) {
             console.error('Error obteniendo datos live:', error);
             return [];
@@ -434,4 +432,4 @@ window.registrarRespuesta = function(e) {
     if (app && app.gestorFormularios) {
         app.gestorFormularios.registrarRespuesta(e);
     }
-};
+}; 

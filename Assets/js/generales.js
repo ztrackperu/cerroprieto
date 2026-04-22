@@ -30,49 +30,74 @@ document.addEventListener("DOMContentLoaded", async function() {
     setInterval( async function(){ okey =  await dataComando();}, 30000);
 });
 
-async function cargarBarra(){
-    const response = await fetch(base_url + "AdminPage/ListaComandos/", { method: "GET" });
-    const result = await response.json();
-    console.log('RESULTADO');
-    let data = result.data;
-    let lista = data.lista;
-    //console.log(lista);
-    let totalProgress = 0;
-    const totalItems = data.contador * 2; 
-
-    lista.forEach(item => {
-        if (item.fecha_ejecucion) {
-            totalProgress += 1;
+async function cargarBarra() {
+    const vpercentage = document.getElementById('valuePercentage');
+    const progressbar = document.getElementById('progressbar');
+    if (!vpercentage || !progressbar) {
+        return;
+    }
+    try {
+        const response = await fetch(base_url + "AdminPage/ListaComandos/", { method: "GET" });
+        if (!response.ok) {
+            console.warn("ListaComandos: HTTP " + response.status);
+            vpercentage.innerHTML = "—";
+            return;
         }
-
-        if (item.validacion) {
-            totalProgress += 1;
+        let result;
+        try {
+            result = await response.json();
+        } catch (e) {
+            console.warn("ListaComandos: respuesta no es JSON", e);
+            vpercentage.innerHTML = "—";
+            return;
         }
-    });
+        if (!result || !result.data || !Array.isArray(result.data.lista)) {
+            console.warn("ListaComandos: sin data.lista (API u endpoint no disponible)");
+            vpercentage.innerHTML = "0.00%";
+            $(progressbar).progressbar({ value: 0 });
+            return;
+        }
+        const data = result.data;
+        const lista = data.lista;
+        let totalProgress = 0;
+        const totalItems = Math.max((data.contador != null ? data.contador : lista.length) * 2, 1);
 
-    // Calcular el porcentaje
-    const percentage = (totalProgress / totalItems) * 100;
+        lista.forEach(function (item) {
+            if (item.fecha_ejecucion) {
+                totalProgress += 1;
+            }
+            if (item.validacion) {
+                totalProgress += 1;
+            }
+        });
 
-    console.log('PORCENTAJE');
-    console.log(percentage);
-    let vpercentage = document.getElementById('valuePercentage');
-    vpercentage.innerHTML = percentage.toFixed(2) + '%';
-
-    // Actualizar la barra de progreso
-    $('#progressbar').progressbar({
-        value: percentage
-    });
-    $("#progressbar").css({ 'background': '#e4eefa' });
-    $("#progressbar > div").css({ 'background': '#0e2238' });
+        const percentage = (totalProgress / totalItems) * 100;
+        vpercentage.innerHTML = percentage.toFixed(2) + "%";
+        $(progressbar).progressbar({ value: percentage });
+        $("#progressbar").css({ background: "#e4eefa" });
+        $("#progressbar > div").css({ background: "#0e2238" });
+    } catch (err) {
+        console.warn("ListaComandos (cargarBarra):", err);
+        vpercentage.innerHTML = "—";
+    }
 }
 
-function dataComando(){
-    tblComandos = $('#tblComandos').DataTable({
+function dataComando() {
+    if (!$("#tblComandos").length) {
+        return;
+    }
+    tblComandos = $("#tblComandos").DataTable({
     ajax: {
         url: base_url + "AdminPage/ListaComandos",
-        dataSrc: function(result) {
-            // Acceder a los campos dentro de 'result.data.lista'
-            return result.data.lista;
+        dataSrc: function (result) {
+            if (result && result.data && Array.isArray(result.data.lista)) {
+                return result.data.lista;
+            }
+            console.warn("ListaComandos: tabla sin lista válida; se muestra vacía (endpoint/API no disponible).");
+            return [];
+        },
+        error: function (xhr, textStatus) {
+            console.warn("ListaComandos (DataTables):", textStatus || xhr.status);
         }
     },
     buttons: [

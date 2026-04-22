@@ -98,94 +98,91 @@ class AdminPage extends Controller
         $resultado = $resultado1->data;
         echo json_encode($VerificarLive, JSON_UNESCAPED_UNICODE);
         */
-        $datosW =$_SESSION['data'] ;
-        $resultado1 = array('data'=>$datosW);
-        $VerificarLive = $this->model->VerificarLive($resultado1);
-        $Verificar = json_decode($VerificarLive);
-        $Verificar = $Verificar->data;
-        //$resultado = $VerificarLive->data;
-        /*
-        $text ="";
-        $datosW =$_SESSION['data'] ;
-        foreach ($datosW as $dat) {
-            $text.=$dat->telemetria_id.",";
+        if (empty($_SESSION['data']) || !is_array($_SESSION['data'])) {
+            echo json_encode(array(), JSON_UNESCAPED_UNICODE);
+            die();
         }
-        */
-        $d =0 ;
+        $datosW = $_SESSION['data'];
+        $resultado1 = array('data' => $datosW);
+        $verificarJson = $this->model->VerificarLive($resultado1);
+        $verificarApi = json_decode($verificarJson);
+        if (!is_object($verificarApi) || !isset($verificarApi->data)) {
+            echo json_encode(array(), JSON_UNESCAPED_UNICODE);
+            die();
+        }
+        $Verificar = $verificarApi->data;
+        if (!is_array($Verificar)) {
+            if (is_object($Verificar)) {
+                $Verificar = array($Verificar);
+            } else {
+                $Verificar = array();
+            }
+        }
+        $d = 0;
         foreach ($datosW as $clave => $valor) {
-            // $array[3] se actualizará con cada valor de $array...
-            //echo "{$clave} => {$valor} ";
-            //print_r($array);
+            if (!is_object($valor) || !isset($valor->telemetria_id)) {
+                continue;
+            }
             foreach ($Verificar as $dat) {
-                if($valor->telemetria_id==$dat->telemetria_id){
-                    //va haber reemplazo en session en la fecha pa continuar actualizando
-                    $_SESSION['data'][$clave]->ultima_fecha =$dat->ultima_fecha ;
+                if (!is_object($dat) || !isset($dat->telemetria_id)) {
+                    continue;
+                }
+                if ((string) $valor->telemetria_id === (string) $dat->telemetria_id) {
+                    $_SESSION['data'][$clave]->ultima_fecha = $dat->ultima_fecha;
                     $dat->ultima_fecha = fechaPro($dat->ultima_fecha);
-                    //echo $dat->ultima_fecha;
-                    $dat->temp_supply_1 =tempNormal($dat->temp_supply_1) ; 
-                    $dat->return_air =tempNormal($dat->return_air) ; 
-                    $dat->set_point =tempNormal($dat->set_point);
-                    $dat->relative_humidity =porNormal($dat->relative_humidity) ; 
-                    $dat->humidity_set_point =porNormal($dat->humidity_set_point) ; 
-                    $dat->evaporation_coil =tempNormal($dat->evaporation_coil) ; 
-                    
-                    //$dat->compress_coil_1 =tempNormal($dat->compress_coil_1) ;
+                    $dat->temp_supply_1 = tempNormal($dat->temp_supply_1);
+                    $dat->return_air = tempNormal($dat->return_air);
+                    $dat->set_point = tempNormal($dat->set_point);
+                    $dat->relative_humidity = porNormal($dat->relative_humidity);
+                    $dat->humidity_set_point = porNormal($dat->humidity_set_point);
+                    $dat->evaporation_coil = tempNormal($dat->evaporation_coil);
                     $dat->ambient_air = tempNormal($dat->ambient_air);
-                    $dat->cargo_1_temp =tempNormal($dat->cargo_1_temp) ; 
-                    $dat->cargo_2_temp =tempNormal($dat->cargo_2_temp) ; 
-                    $dat->cargo_3_temp =tempNormal($dat->cargo_3_temp) ; 
-                    $dat->cargo_4_temp =tempNormal($dat->cargo_4_temp) ; 
+                    $dat->cargo_1_temp = tempNormal($dat->cargo_1_temp);
+                    $dat->cargo_2_temp = tempNormal($dat->cargo_2_temp);
+                    $dat->cargo_3_temp = tempNormal($dat->cargo_3_temp);
+                    $dat->cargo_4_temp = tempNormal($dat->cargo_4_temp);
                     $d++;
                 }
             }
-        }        
-        //echo json_encode($_SESSION['data'][0]->telemetria_id, JSON_UNESCAPED_UNICODE);
-        echo json_encode($Verificar , JSON_UNESCAPED_UNICODE);
+        }
+        echo json_encode($Verificar, JSON_UNESCAPED_UNICODE);
         die();
     } 
     
     
     public function ListaDispositivoEmpresa()
     {
-        $data = $this->model->ListaDispositivoEmpresa(61);
-        $data = json_decode($data);
-        $data = $data->data;
-        // consultar datos del equipo de cerro prieto 
-        $imei_oficial ="860389053949943";
-        $dataPlus = $this->model->ConsultarUltimaTrama($imei_oficial);
-        $dataPlus = json_decode($dataPlus);
-        $dataPlus = $dataPlus->data;
-        #ContenedorGruposEspeciales
-        $conjunto =ContenedorGruposEspeciales($dataPlus);
-
-
-        //print_r($data);
-        //print_r("aqui estamos en el controlador");
-        //print_r($dataPlus);
-
-
-        //$data = $this->model->ListaDispositivoEmpresa($_SESSION['empresa_id']);
-
-
-        //echo json_encode($data, JSON_UNESCAPED_UNICODE);
-        /*$text = "";
-        $data2 = [];
-        foreach($data as $val){
-            
+        $empresaId = (isset($_SESSION['empresa_id']) && (int) $_SESSION['empresa_id'] > 0)
+            ? (int) $_SESSION['empresa_id'] : 61;
+        $rawLista = $this->model->ListaDispositivoEmpresa($empresaId);
+        $decLista = json_decode($rawLista);
+        if (!is_object($decLista) || !isset($decLista->data)) {
+            $data = array();
+        } else {
+            $data = $decLista->data;
         }
-        $data1 = array(
-            'data' => $data,
-            'text' => $text
-        );
-
-        echo json_encode($data1, JSON_UNESCAPED_UNICODE);
-        die();*/
+        if (!is_array($data) && is_object($data)) {
+            $data = array($data);
+        }
+        if (!is_array($data)) {
+            $data = array();
+        }
+        $imei_oficial = " ";
+        $dataPlus = $this->model->ConsultarUltimaTrama($imei_oficial);
+        $decPlus = json_decode($dataPlus);
+        if (!is_object($decPlus) || !isset($decPlus->data) || $decPlus->data === null) {
+            $dataPlus = (object) array();
+        } else {
+            $dataPlus = is_object($decPlus->data) ? $decPlus->data : (object) (array) $decPlus->data;
+        }
+        $conjunto = ContenedorGruposEspeciales($dataPlus);
         
         $text ="";
         $data2 =[];
         $url = base_url;
         $fecha=[];
         $dataz="";
+        $enlace = null;
         
         foreach($data as $val){
             $tipo = $val->extra_1;
@@ -219,9 +216,18 @@ class AdminPage extends Controller
 
     }   
     public function ListaD() {
-        $data = $this->model->ListaDispositivoEmpresa($_SESSION['empresa_id']);
-        $data = json_decode($data);
-        $data = $data->data;
+        $empId = (isset($_SESSION['empresa_id']) && (int) $_SESSION['empresa_id'] > 0)
+            ? (int) $_SESSION['empresa_id'] : 61;
+        $raw = $this->model->ListaDispositivoEmpresa($empId);
+        $dec = json_decode($raw);
+        if (!is_object($dec) || !isset($dec->data)) {
+            echo json_encode(array('estados' => array()), JSON_UNESCAPED_UNICODE);
+            die();
+        }
+        $data = $dec->data;
+        if (!is_array($data)) {
+            $data = is_object($data) ? array($data) : array();
+        }
         $estados = array();
         
         foreach($data as $val2) {
@@ -252,10 +258,27 @@ class AdminPage extends Controller
             return 'Offline';
         }
     }
-    public function ListaComandos(){
-        $data = $this->model-> ListaComandos();
-        $data = json_decode($data);
+    public function ListaComandos()
+    {
+        $raw = $this->model->ListaComandos();
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['data']) || !is_array($data['data'])) {
+            $data = array(
+                'data' => array(
+                    'lista' => array(),
+                    'contador' => 0,
+                ),
+            );
+        } else {
+            if (!isset($data['data']['lista']) || !is_array($data['data']['lista'])) {
+                $data['data']['lista'] = array();
+            }
+            if (!isset($data['data']['contador'])) {
+                $data['data']['contador'] = count($data['data']['lista']);
+            }
+        }
         echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        die();
     }
     /*
     public function ListaComandos(){

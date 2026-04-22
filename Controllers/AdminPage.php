@@ -186,8 +186,12 @@ class AdminPage extends Controller
                 $imeiParaTrama = trim((string) $ultimo->IMEI);
             }
         }
-        if ($imeiParaTrama === '' && defined('cerro_prieto_series_imei') && (string) cerro_prieto_series_imei !== '') {
+        if ($imeiParaTrama === '' && defined('cerro_prieto_series_imei') && trim((string) cerro_prieto_series_imei) !== '') {
             $imeiParaTrama = trim((string) cerro_prieto_series_imei);
+        }
+        /** Cerro Prieto: trama siempre con IMEI de referencia si no vino de la API (evita text_ok en blanco). */
+        if ($imeiParaTrama === '') {
+            $imeiParaTrama = '860389053949943';
         }
         $rawTrama = $this->model->ConsultarUltimaTrama($imeiParaTrama);
         $decPlus = json_decode($rawTrama);

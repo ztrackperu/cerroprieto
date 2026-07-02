@@ -3,7 +3,7 @@
  * Starcool: relés no se grafican; CO2/O2 eje Y izquierdo 0–100 %; humedad eje Y1 derecho 0–100 %.
  * Starcool: spanGaps para no cortar la línea en nulos; SET CO1–3 / O1–3 como líneas horizontales de referencia (%).
  * Atmósfera: Power no se grafica; Y1 temperaturas, Y2 %, Y3 ventilación CFM; por defecto Set Point, Suministro y Retorno.
- * Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), eje Y único en ppm 0–300; lecturas > 300 ppm → nulo.
+ * Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), eje Y único en ppm 0–300; mad_1=1 y mad_2=20 son placeholders (nulos); > 300 ppm → nulo.
  */
 (function () {
     const sector = typeof window.SERIES_SECTOR === 'string' ? window.SERIES_SECTOR : 'starcool_cerro_prieto';
@@ -65,26 +65,37 @@
 
     const MADURADOR_ETILENO_MIN = 0;
     const MADURADOR_ETILENO_MAX = 300;
+    /** Placeholders del equipo: no son lecturas reales */
+    const MADURADOR_ETILENO_PLACEHOLDER = {
+        mad_1: 1,
+        mad_2: 20
+    };
 
     function maduradorEsClaveGraficable(key) {
         return MADURADOR_ETILENO_KEYS.has(key);
     }
 
-    /** Etileno (mad_1 / mad_2): > 300 ppm se considera inválido (mismo criterio que el eje 0–300) */
-    function maduradorEtilenoPpmExcedeEscala(v) {
+    /**
+     * Etileno (mad_1 / mad_2): suprimir placeholders (1 / 20), fuera de escala (> 300) o no numérico.
+     */
+    function maduradorEtilenoValorSuprimido(key, v) {
+        if (!maduradorEsClaveGraficable(key)) return false;
         if (v === null || v === undefined || v === '') return false;
         const n = Number(v);
-        return Number.isFinite(n) && n > MADURADOR_ETILENO_MAX;
+        if (!Number.isFinite(n)) return true;
+        if (n > MADURADOR_ETILENO_MAX) return true;
+        if (key === MADURADOR_ETILENO_NIVEL_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_1) return true;
+        if (key === MADURADOR_ETILENO_SET_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_2) return true;
+        return false;
     }
 
-    /** y para Chart.js: etileno fuera de rango → null (hueco en la serie) */
+    /** y para Chart.js: valor suprimido → null (hueco en la serie) */
     function yValueMaduradorChart(key, v) {
         if (!maduradorEsClaveGraficable(key)) return null;
         if (v === null || v === undefined || v === '') return null;
+        if (maduradorEtilenoValorSuprimido(key, v)) return null;
         const y = Number(v);
-        if (!Number.isFinite(y)) return null;
-        if (y > MADURADOR_ETILENO_MAX) return null;
-        return y;
+        return Number.isFinite(y) ? y : null;
     }
 
     const MADURADOR_DEFAULT_ON = new Set(MADURADOR_CHART_KEYS);
@@ -1529,8 +1540,8 @@
             const row = [String(t)];
             keys.forEach(function (key) {
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && maduradorEsClaveGraficable(key) && maduradorEtilenoPpmExcedeEscala(v)) {
-                    row.push('');
+                if (isMadurador && maduradorEtilenoValorSuprimido(key, v)) {
+                    row.push('_');
                 } else {
                     row.push(v === null || v === undefined ? '' : String(v));
                 }
@@ -1674,8 +1685,8 @@
             keys.forEach(function (key) {
                 const td = document.createElement('td');
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && maduradorEsClaveGraficable(key) && maduradorEtilenoPpmExcedeEscala(v)) {
-                    td.textContent = '—';
+                if (isMadurador && maduradorEtilenoValorSuprimido(key, v)) {
+                    td.textContent = '_';
                 } else {
                     td.textContent = v === null || v === undefined ? '—' : String(v);
                 }

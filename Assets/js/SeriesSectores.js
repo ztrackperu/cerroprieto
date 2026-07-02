@@ -3,7 +3,7 @@
  * Starcool: relés no se grafican; CO2/O2 eje Y izquierdo 0–100 %; humedad eje Y1 derecho 0–100 %.
  * Starcool: spanGaps para no cortar la línea en nulos; SET CO1–3 / O1–3 como líneas horizontales de referencia (%).
  * Atmósfera: Power no se grafica; Y1 temperaturas, Y2 %, Y3 ventilación CFM; por defecto Set Point, Suministro y Retorno.
- * Madurador: igual; Y4 etileno (ppm) 0–300; lecturas > 300 ppm se tratan como nulos (no distorsionan el eje); hora inyección en Y1; Power no se grafica.
+ * Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), eje Y único en ppm 0–300; lecturas > 300 ppm → nulo.
  */
 (function () {
     const sector = typeof window.SERIES_SECTOR === 'string' ? window.SERIES_SECTOR : 'starcool_cerro_prieto';
@@ -57,20 +57,20 @@
         }
     ];
 
-    /** Madurador: Power (mad_1) no entra al gráfico */
-    const MADURADOR_POWER_KEY = 'mad_1';
-
-    const MADURADOR_TEMP_KEYS = new Set(['mad_2', 'mad_3', 'mad_4', 'mad_5', 'mad_6', 'mad_7', 'mad_8', 'mad_9', 'mad_10']);
-    const MADURADOR_PCT_KEYS = new Set(['mad_11', 'mad_13', 'mad_14', 'mad_15', 'mad_16']);
-    const MADURADOR_VENT_KEY = 'mad_12';
-    const MADURADOR_ETILENO_KEY = 'mad_18';
-    /** Hora inyección comparte eje Y1 con temperaturas */
-    const MADURADOR_HORA_INYECCION_KEY = 'mad_17';
+    /** Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), ambos en ppm */
+    const MADURADOR_ETILENO_NIVEL_KEY = 'mad_1';
+    const MADURADOR_ETILENO_SET_KEY = 'mad_2';
+    const MADURADOR_CHART_KEYS = [MADURADOR_ETILENO_NIVEL_KEY, MADURADOR_ETILENO_SET_KEY];
+    const MADURADOR_ETILENO_KEYS = new Set(MADURADOR_CHART_KEYS);
 
     const MADURADOR_ETILENO_MIN = 0;
     const MADURADOR_ETILENO_MAX = 300;
 
-    /** Etileno (mad_18): > 300 ppm se considera inválido (mismo criterio que el eje 0–300) */
+    function maduradorEsClaveGraficable(key) {
+        return MADURADOR_ETILENO_KEYS.has(key);
+    }
+
+    /** Etileno (mad_1 / mad_2): > 300 ppm se considera inválido (mismo criterio que el eje 0–300) */
     function maduradorEtilenoPpmExcedeEscala(v) {
         if (v === null || v === undefined || v === '') return false;
         const n = Number(v);
@@ -79,56 +79,27 @@
 
     /** y para Chart.js: etileno fuera de rango → null (hueco en la serie) */
     function yValueMaduradorChart(key, v) {
+        if (!maduradorEsClaveGraficable(key)) return null;
         if (v === null || v === undefined || v === '') return null;
         const y = Number(v);
         if (!Number.isFinite(y)) return null;
-        if (key === MADURADOR_ETILENO_KEY && y > MADURADOR_ETILENO_MAX) return null;
+        if (y > MADURADOR_ETILENO_MAX) return null;
         return y;
     }
 
-    const MADURADOR_DEFAULT_ON = new Set(['mad_2', 'mad_3', 'mad_4']);
+    const MADURADOR_DEFAULT_ON = new Set(MADURADOR_CHART_KEYS);
 
     const MADURADOR_GROUPS = [
         {
-            id: 'temp',
-            label: 'Temperaturas / hora inyección — eje Y1',
-            keys: ['mad_2', 'mad_3', 'mad_4', 'mad_5', 'mad_6', 'mad_7', 'mad_8', 'mad_9', 'mad_10', 'mad_17'],
-            defaultKeys: ['mad_2', 'mad_3', 'mad_4']
-        },
-        {
-            id: 'pct',
-            label: 'Porcentajes — eje Y2',
-            keys: ['mad_11', 'mad_13', 'mad_14', 'mad_15', 'mad_16'],
-            defaultKeys: []
-        },
-        {
-            id: 'vent',
-            label: 'Ventilación (Y3) + etileno (Y4, 0–300 ppm)',
-            keys: ['mad_12', 'mad_18'],
-            defaultKeys: []
+            id: 'etileno',
+            label: 'Etileno (ppm)',
+            keys: MADURADOR_CHART_KEYS,
+            defaultKeys: MADURADOR_CHART_KEYS
         }
     ];
 
-    /** Orden fijo para colores (sin Power) */
-    const MADURADOR_CHART_KEY_ORDER = [
-        'mad_2',
-        'mad_3',
-        'mad_4',
-        'mad_5',
-        'mad_6',
-        'mad_7',
-        'mad_8',
-        'mad_9',
-        'mad_10',
-        'mad_17',
-        'mad_11',
-        'mad_13',
-        'mad_14',
-        'mad_15',
-        'mad_16',
-        'mad_12',
-        'mad_18'
-    ];
+    /** Orden fijo para colores */
+    const MADURADOR_CHART_KEY_ORDER = MADURADOR_CHART_KEYS.slice();
 
     /** Grupos para UI (orden visual) */
     const STARCOOL_GROUPS = [
@@ -665,12 +636,10 @@
         return 'y1';
     }
 
-    function maduradorYAxisId(key) {
-        if (MADURADOR_TEMP_KEYS.has(key) || key === MADURADOR_HORA_INYECCION_KEY) return 'y1';
-        if (MADURADOR_PCT_KEYS.has(key)) return 'y2';
-        if (key === MADURADOR_VENT_KEY) return 'y3';
-        if (key === MADURADOR_ETILENO_KEY) return 'y4';
-        return 'y1';
+    function maduradorSeriesKeys(seriesObj) {
+        return MADURADOR_CHART_KEYS.filter(function (k) {
+            return Object.prototype.hasOwnProperty.call(seriesObj, k);
+        });
     }
 
     /** Orden fijo para colores (sin Power) */
@@ -1024,20 +993,15 @@
 
     function initMaduradorVisibility(seriesObj) {
         maduradorVisibility = {};
-        Object.keys(seriesObj)
-            .sort()
-            .forEach(function (k) {
-                if (k === MADURADOR_POWER_KEY) return;
-                maduradorVisibility[k] = MADURADOR_DEFAULT_ON.has(k);
-            });
+        maduradorSeriesKeys(seriesObj).forEach(function (k) {
+            maduradorVisibility[k] = MADURADOR_DEFAULT_ON.has(k);
+        });
     }
 
     function getMaduradorChartKeys(seriesObj) {
-        return Object.keys(seriesObj)
-            .sort()
-            .filter(function (k) {
-                return k !== MADURADOR_POWER_KEY && maduradorVisibility[k];
-            });
+        return maduradorSeriesKeys(seriesObj).filter(function (k) {
+            return maduradorVisibility[k];
+        });
     }
 
     function syncMaduradorGroupMaster(groupId, keysInData) {
@@ -1056,9 +1020,7 @@
     function renderMaduradorControls(seriesObj) {
         if (!isMadurador || !el.maduradorPanel || !el.maduradorBody) return;
         el.maduradorBody.innerHTML = '';
-        const keysPresent = Object.keys(seriesObj).filter(function (k) {
-            return k !== MADURADOR_POWER_KEY;
-        });
+        const keysPresent = maduradorSeriesKeys(seriesObj);
         if (keysPresent.length === 0) {
             el.maduradorPanel.classList.add('d-none');
             return;
@@ -1380,19 +1342,7 @@
         if (isMadurador) {
             const chartKeys = getMaduradorChartKeys(seriesObj);
             const colorOrder = MADURADOR_CHART_KEY_ORDER.filter(function (k) {
-                return Object.prototype.hasOwnProperty.call(seriesObj, k) && k !== MADURADOR_POWER_KEY;
-            });
-            const hasY1 = chartKeys.some(function (k) {
-                return maduradorYAxisId(k) === 'y1';
-            });
-            const hasY2 = chartKeys.some(function (k) {
-                return maduradorYAxisId(k) === 'y2';
-            });
-            const hasY3 = chartKeys.some(function (k) {
-                return maduradorYAxisId(k) === 'y3';
-            });
-            const hasY4 = chartKeys.some(function (k) {
-                return maduradorYAxisId(k) === 'y4';
+                return Object.prototype.hasOwnProperty.call(seriesObj, k);
             });
 
             if (chartKeys.length === 0) {
@@ -1406,7 +1356,7 @@
                         plugins: {
                             title: {
                                 display: true,
-                                text: 'Marque al menos una serie en el panel superior'
+                                text: 'Marque al menos una serie en el panel superior (Etileno o SP Etileno)'
                             }
                         }
                     }
@@ -1427,85 +1377,56 @@
                 return {
                     label: serieLabel(key),
                     data: pts,
-                    yAxisID: maduradorYAxisId(key),
+                    yAxisID: 'y',
                     borderColor: COLORS[ci % COLORS.length],
                     backgroundColor: 'transparent',
                     tension: 0.15,
                     spanGaps: false,
                     pointRadius: fechas.length > 80 ? 0 : 2,
-                    borderWidth: 1.5
+                    borderWidth: key === MADURADOR_ETILENO_SET_KEY ? 2 : 1.5,
+                    borderDash: key === MADURADOR_ETILENO_SET_KEY ? [6, 4] : undefined
                 };
             });
 
             const scales = {
-                x: timeScaleXAxis()
-            };
-            if (hasY1) {
-                const y1Title =
-                    chartKeys.indexOf(MADURADOR_HORA_INYECCION_KEY) !== -1
-                        ? 'Temperatura (°C) / hora inyección (h)'
-                        : 'Temperatura (°C)';
-                scales.y1 = {
+                x: timeScaleXAxis(),
+                y: {
                     type: 'linear',
                     position: 'left',
-                    title: { display: true, text: y1Title },
-                    grid: { drawOnChartArea: true }
-                };
-            }
-            if (hasY2) {
-                scales.y2 = {
-                    type: 'linear',
-                    position: 'right',
-                    title: { display: true, text: '%' },
-                    grid: { drawOnChartArea: false }
-                };
-            }
-            if (hasY3) {
-                scales.y3 = {
-                    type: 'linear',
-                    position: 'right',
-                    title: { display: true, text: 'Ventilación (CFM)' },
-                    grid: { drawOnChartArea: false }
-                };
-            }
-            if (hasY4) {
-                scales.y4 = {
-                    type: 'linear',
-                    position: 'right',
                     min: MADURADOR_ETILENO_MIN,
                     max: MADURADOR_ETILENO_MAX,
-                    title: { display: true, text: 'Etileno (ppm) 0–300' },
-                    grid: { drawOnChartArea: false }
-                };
-            }
-
-            const chartOpts = {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
-                    tooltip: {
-                        callbacks: {
-                            title: function (items) {
-                                if (!items.length) return '';
-                                const x = items[0].parsed.x;
-                                return x != null ? new Date(x).toLocaleString() : '';
-                            }
-                        }
-                    }
-                },
-                scales: scales
+                    title: { display: true, text: 'Etileno (ppm)' },
+                    grid: { drawOnChartArea: true }
+                }
             };
-            if (hasY3 && hasY4) {
-                chartOpts.layout = { padding: { right: 8 } };
-            }
 
             const ctx = el.canvas.getContext('2d');
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: { datasets: datasets },
-                options: chartOpts
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                title: function (items) {
+                                    if (!items.length) return '';
+                                    const x = items[0].parsed.x;
+                                    return x != null ? new Date(x).toLocaleString() : '';
+                                },
+                                label: function (item) {
+                                    const val = item.parsed.y;
+                                    if (val == null || Number.isNaN(val)) return item.dataset.label + ': —';
+                                    return item.dataset.label + ': ' + val + ' ppm';
+                                }
+                            }
+                        }
+                    },
+                    scales: scales
+                }
             });
             return;
         }
@@ -1597,7 +1518,7 @@
         const fechas = d.fechas;
         const seriesObj = d.series;
         if (!Array.isArray(fechas) || fechas.length === 0) return null;
-        const keys = Object.keys(seriesObj).sort();
+        const keys = isMadurador ? maduradorSeriesKeys(seriesObj) : Object.keys(seriesObj).sort();
         if (keys.length === 0) return null;
         const headers = ['Fecha / hora'].concat(
             keys.map(function (k) {
@@ -1608,7 +1529,7 @@
             const row = [String(t)];
             keys.forEach(function (key) {
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && key === MADURADOR_ETILENO_KEY && maduradorEtilenoPpmExcedeEscala(v)) {
+                if (isMadurador && maduradorEsClaveGraficable(key) && maduradorEtilenoPpmExcedeEscala(v)) {
                     row.push('');
                 } else {
                     row.push(v === null || v === undefined ? '' : String(v));
@@ -1723,7 +1644,7 @@
         const d = payload.data;
         const fechas = d.fechas;
         const seriesObj = d.series;
-        const keys = Object.keys(seriesObj).sort();
+        const keys = isMadurador ? maduradorSeriesKeys(seriesObj) : Object.keys(seriesObj).sort();
 
         el.tableHead.innerHTML = '';
         const th0 = document.createElement('th');
@@ -1740,9 +1661,6 @@
             if (isAtmosfera && key === ATMOSFERA_POWER_KEY) {
                 th.classList.add('text-secondary');
             }
-            if (isMadurador && key === MADURADOR_POWER_KEY) {
-                th.classList.add('text-secondary');
-            }
             el.tableHead.appendChild(th);
         });
 
@@ -1756,7 +1674,7 @@
             keys.forEach(function (key) {
                 const td = document.createElement('td');
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && key === MADURADOR_ETILENO_KEY && maduradorEtilenoPpmExcedeEscala(v)) {
+                if (isMadurador && maduradorEsClaveGraficable(key) && maduradorEtilenoPpmExcedeEscala(v)) {
                     td.textContent = '—';
                 } else {
                     td.textContent = v === null || v === undefined ? '—' : String(v);

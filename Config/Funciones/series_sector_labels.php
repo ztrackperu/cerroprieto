@@ -45,8 +45,8 @@ function mapa_etiquetas_series_por_sector(string $sector): array
     ];
 
     $madurador = [
-        'mad_1' => ['label' => 'POWER', 'unit' => ''],
-        'mad_2' => ['label' => 'Setpoint', 'unit' => 'C°'],
+        'mad_1' => ['label' => 'Etileno', 'unit' => 'ppm'],
+        'mad_2' => ['label' => 'SP Etileno', 'unit' => 'ppm'],
         'mad_3' => ['label' => 'Suministro', 'unit' => 'C°'],
         'mad_4' => ['label' => 'Retorno', 'unit' => 'C°'],
         'mad_5' => ['label' => 'Evaporador', 'unit' => 'C°'],

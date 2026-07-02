@@ -1209,6 +1209,24 @@ function formatearCampoMadPlus($valor, $tipo, $campo = '') {
             }
             $n = (float) $valor;
             return ($n >= 0 && $n <= 250) ? number_format($n, 1) . ' ppm' : 'NA';
+        case 'minutos':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 59) ? number_format($n, 0) . ' min' : 'NA';
+        case 'segundos':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 59) ? number_format($n, 0) . ' s' : 'NA';
+        case 'hora_dia':
+            if (!maduradorValorNumericoValido($valor)) {
+                return 'NA';
+            }
+            $n = (float) $valor;
+            return ($n >= 0 && $n <= 23) ? number_format($n, 0) . ' h' : 'NA';
         default:
             return 'NA';
     }
@@ -1313,12 +1331,12 @@ function generarTarjetaMadurador($datos) {
     }
 
     $camposMad = [
-        'mad_1' => ['label' => 'Etileno', 'icon' => 'bi-1-circle'],
-        'mad_2' => ['label' => 'SP Etileno', 'icon' => 'bi-2-circle'],
-        'mad_3' => ['label' => 'Tiempo Programado', 'icon' => 'bi-3-circle'],
-        'mad_4' => ['label' => 'Hora', 'icon' => 'bi-check-circle'],
-        'mad_5' => ['label' => 'Minuto', 'icon' => 'bi-check-circle'],
-        'mad_6' => ['label' => 'Segundo', 'icon' => 'bi-check-circle'],
+        'mad_1' => ['label' => 'Etileno', 'tipo' => 'ppm', 'icon' => 'bi-1-circle'],
+        'mad_2' => ['label' => 'SP Etileno', 'tipo' => 'ppm', 'icon' => 'bi-2-circle'],
+        'mad_3' => ['label' => 'Tiempo Programado', 'tipo' => 'horas', 'icon' => 'bi-3-circle'],
+        'mad_4' => ['label' => 'Hora', 'tipo' => 'hora_dia', 'icon' => 'bi-clock'],
+        'mad_5' => ['label' => 'Minuto', 'tipo' => 'minutos', 'icon' => 'bi-clock-history'],
+        'mad_6' => ['label' => 'Segundo', 'tipo' => 'segundos', 'icon' => 'bi-stopwatch'],
     ];
 
     $rowsExport = [];
@@ -1326,18 +1344,17 @@ function generarTarjetaMadurador($datos) {
     foreach ($camposMad as $campo => $info) {
         if (property_exists($datos, $campo)) {
             $valor = $datos->$campo;
-            $estado = $valor > 0 ? 'ACTIVO' : 'INACTIVO';
-            $colorEstado = $valor > 0 ? 'text-success' : 'text-secondary';
-            $bgColor = $valor > 0 ? 'bg-light-success' : '';
-            $rowsExport[] = ['label' => $info['label'], 'value' => $estado];
+            $texto = formatearCampoMadPlus($valor, $info['tipo'], $campo);
+            $color = colorTextoMadPlus($valor, $info['tipo'], $texto);
+            $rowsExport[] = ['label' => $info['label'], 'value' => (string) $texto];
 
             $bodyHtml .= "
             <div class='col-6 col-md-4'>
-                <div class='d-flex align-items-center p-2 border rounded {$bgColor}'>
-                    <i class='{$info['icon']} fs-5 {$colorEstado} me-2'></i>
+                <div class='d-flex align-items-center p-2 border rounded'>
+                    <i class='{$info['icon']} fs-5 text-success me-2'></i>
                     <div>
                         <small class='text-muted d-block'>{$info['label']}</small>
-                        <span class='fw-bold {$colorEstado}'>{$estado}</span>
+                        <span class='fw-bold {$color}'>{$texto}</span>
                     </div>
                 </div>
             </div>";

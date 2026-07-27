@@ -1122,14 +1122,14 @@ function generarTarjetaAtmosferaControlada($datos) {
 }
 
 /**
- * Cuenta propiedades mad_1..mad_18 presentes en el objeto madurador.
+ * Cuenta propiedades mad_1..mad_22 presentes en el objeto madurador.
  */
 function contarCamposMadurador($datos) {
     if (!is_object($datos)) {
         return 0;
     }
     $c = 0;
-    for ($i = 1; $i <= 18; $i++) {
+    for ($i = 1; $i <= 22; $i++) {
         if (property_exists($datos, 'mad_' . $i)) {
             $c++;
         }
@@ -1253,26 +1253,8 @@ function generarTarjetaMaduradorPlus($datos) {
         return '';
     }
 
-    $camposPlus = [
-        'mad_1' => ['label' => 'POWER', 'tipo' => 'power', 'icon' => 'bi-power'],
-        'mad_2' => ['label' => 'Setpoint', 'tipo' => 'setpoint', 'icon' => 'bi-sliders'],
-        'mad_3' => ['label' => 'Suministro', 'tipo' => 'temp', 'icon' => 'bi-wind'],
-        'mad_4' => ['label' => 'Retorno', 'tipo' => 'temp', 'icon' => 'bi-arrow-return-left'],
-        'mad_5' => ['label' => 'Evaporador', 'tipo' => 'temp', 'icon' => 'bi-cloud-haze2'],
-        'mad_6' => ['label' => 'Condensador', 'tipo' => 'temp', 'icon' => 'bi-thermometer-half'],
-        'mad_7' => ['label' => 'Sensor 1', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
-        'mad_8' => ['label' => 'Sensor 2', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
-        'mad_9' => ['label' => 'Sensor 3', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
-        'mad_10' => ['label' => 'Sensor 4', 'tipo' => 'temp', 'icon' => 'bi-thermometer-low'],
-        'mad_11' => ['label' => 'Humedad', 'tipo' => 'porcentaje', 'icon' => 'bi-droplet'],
-        'mad_12' => ['label' => 'Ventilación', 'tipo' => 'cfm', 'icon' => 'bi-fan'],
-        'mad_13' => ['label' => 'CO2', 'tipo' => 'porcentaje', 'icon' => 'bi-cloud'],
-        'mad_14' => ['label' => 'O2', 'tipo' => 'porcentaje', 'icon' => 'bi-circle-half'],
-        'mad_15' => ['label' => 'Humedad SP', 'tipo' => 'porcentaje', 'icon' => 'bi-moisture'],
-        'mad_16' => ['label' => 'CO2 SP', 'tipo' => 'porcentaje', 'icon' => 'bi-percent'],
-        'mad_17' => ['label' => 'Hora inyección', 'tipo' => 'horas', 'icon' => 'bi-clock-history'],
-        'mad_18' => ['label' => 'PPM (etileno)', 'tipo' => 'ppm', 'icon' => 'bi-activity'],
-    ];
+    require_once __DIR__ . '/madurador_campos.php';
+    $camposPlus = mapa_campos_madurador_completo();
 
     $rowsExport = [];
     $bodyHtml = '';
@@ -1331,12 +1313,12 @@ function generarTarjetaMadurador($datos) {
     }
 
     $camposMad = [
-        'mad_1' => ['label' => 'Etileno', 'tipo' => 'ppm', 'icon' => 'bi-1-circle'],
-        'mad_2' => ['label' => 'SP Etileno', 'tipo' => 'ppm', 'icon' => 'bi-2-circle'],
-        'mad_3' => ['label' => 'Tiempo Programado', 'tipo' => 'horas', 'icon' => 'bi-3-circle'],
-        'mad_4' => ['label' => 'Hora', 'tipo' => 'hora_dia', 'icon' => 'bi-clock'],
-        'mad_5' => ['label' => 'Minuto', 'tipo' => 'minutos', 'icon' => 'bi-clock-history'],
-        'mad_6' => ['label' => 'Segundo', 'tipo' => 'segundos', 'icon' => 'bi-stopwatch'],
+        'mad_1' => ['label' => 'Power', 'tipo' => 'power', 'icon' => 'bi-power'],
+        'mad_2' => ['label' => 'Setpoint temperatura', 'tipo' => 'setpoint', 'icon' => 'bi-sliders'],
+        'mad_3' => ['label' => 'Sensor Suministro', 'tipo' => 'temp', 'icon' => 'bi-wind'],
+        'mad_4' => ['label' => 'Sensor Retorno', 'tipo' => 'temp', 'icon' => 'bi-arrow-return-left'],
+        'mad_5' => ['label' => 'Sensor Evaporador', 'tipo' => 'temp', 'icon' => 'bi-cloud-haze2'],
+        'mad_6' => ['label' => 'Sensor Condensador', 'tipo' => 'temp', 'icon' => 'bi-thermometer-half'],
     ];
 
     $rowsExport = [];

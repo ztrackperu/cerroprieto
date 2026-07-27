@@ -1,7 +1,9 @@
 <?php
 
+require_once __DIR__ . '/madurador_campos.php';
+
 /**
- * Etiquetas alineadas con AdminPage (generales.php: Starcool, Atmósfera, Madurador PLUS).
+ * Etiquetas alineadas con AdminPage (generales.php: Starcool, Atmósfera, Madurador).
  *
  * @return array<string, array{label:string, unit:string}>
  */
@@ -44,26 +46,7 @@ function mapa_etiquetas_series_por_sector(string $sector): array
         'ac_16' => ['label' => 'SP CO2', 'unit' => '%'],
     ];
 
-    $madurador = [
-        'mad_1' => ['label' => 'Etileno', 'unit' => 'ppm'],
-        'mad_2' => ['label' => 'SP Etileno', 'unit' => 'ppm'],
-        'mad_3' => ['label' => 'Suministro', 'unit' => 'C°'],
-        'mad_4' => ['label' => 'Retorno', 'unit' => 'C°'],
-        'mad_5' => ['label' => 'Evaporador', 'unit' => 'C°'],
-        'mad_6' => ['label' => 'Condensador', 'unit' => 'C°'],
-        'mad_7' => ['label' => 'Sensor 1', 'unit' => 'C°'],
-        'mad_8' => ['label' => 'Sensor 2', 'unit' => 'C°'],
-        'mad_9' => ['label' => 'Sensor 3', 'unit' => 'C°'],
-        'mad_10' => ['label' => 'Sensor 4', 'unit' => 'C°'],
-        'mad_11' => ['label' => 'Humedad', 'unit' => '%'],
-        'mad_12' => ['label' => 'Ventilación', 'unit' => 'CFM'],
-        'mad_13' => ['label' => 'CO2', 'unit' => '%'],
-        'mad_14' => ['label' => 'O2', 'unit' => '%'],
-        'mad_15' => ['label' => 'Humedad SP', 'unit' => '%'],
-        'mad_16' => ['label' => 'CO2 SP', 'unit' => '%'],
-        'mad_17' => ['label' => 'Hora inyección', 'unit' => 'h'],
-        'mad_18' => ['label' => 'PPM (etileno)', 'unit' => 'ppm'],
-    ];
+    $madurador = mapa_etiquetas_madurador_series();
 
     switch ($sector) {
         case 'starcool_cerro_prieto':

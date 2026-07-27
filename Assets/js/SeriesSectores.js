@@ -3,7 +3,7 @@
  * Starcool: relés no se grafican; CO2/O2 eje Y izquierdo 0–100 %; humedad eje Y1 derecho 0–100 %.
  * Starcool: spanGaps para no cortar la línea en nulos; SET CO1–3 / O1–3 como líneas horizontales de referencia (%).
  * Atmósfera: Power no se grafica; Y1 temperaturas, Y2 %, Y3 ventilación CFM; por defecto Set Point, Suministro y Retorno.
- * Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), eje Y único en ppm 0–300; mad_1=1 y mad_2=20 son placeholders (nulos); > 300 ppm → nulo.
+ * Madurador: ver ver_madurador.md — Y temp (mad_2–10), Y1 % (mad_11,13–16), Y2 ppm (mad_18–19); sombreado Power (mad_1=1); tabla incluye todo mad_*.
  */
 (function () {
     const sector = typeof window.SERIES_SECTOR === 'string' ? window.SERIES_SECTOR : 'starcool_cerro_prieto';
@@ -57,60 +57,143 @@
         }
     ];
 
-    /** Madurador: solo mad_1 (nivel etileno) y mad_2 (setpoint etileno), ambos en ppm */
-    const MADURADOR_ETILENO_NIVEL_KEY = 'mad_1';
-    const MADURADOR_ETILENO_SET_KEY = 'mad_2';
-    const MADURADOR_CHART_KEYS = [MADURADOR_ETILENO_NIVEL_KEY, MADURADOR_ETILENO_SET_KEY];
-    const MADURADOR_ETILENO_KEYS = new Set(MADURADOR_CHART_KEYS);
+    /** Madurador — ver ver_madurador.md y Config/Funciones/madurador_campos.php (etiquetas vía SERIES_LABELS) */
+    const MADURADOR_POWER_KEY = 'mad_1';
+    const MADURADOR_ETILENO_NIVEL_KEY = 'mad_18';
+    const MADURADOR_ETILENO_SET_KEY = 'mad_19';
+
+    const MADURADOR_TEMP_KEYS = new Set([
+        'mad_2', 'mad_3', 'mad_4', 'mad_5', 'mad_6', 'mad_7', 'mad_8', 'mad_9', 'mad_10'
+    ]);
+    const MADURADOR_PCT_KEYS = new Set(['mad_11', 'mad_13', 'mad_14', 'mad_15', 'mad_16']);
+    const MADURADOR_ETILENO_PPM_KEYS = new Set([MADURADOR_ETILENO_NIVEL_KEY, MADURADOR_ETILENO_SET_KEY]);
+    /** Solo tabla / export — no entran al gráfico */
+    const MADURADOR_TABLE_ONLY_KEYS = new Set(['mad_12', 'mad_17', 'mad_20', 'mad_21', 'mad_22']);
+
+    const MADURADOR_CHART_KEY_ORDER = [
+        'mad_2', 'mad_3', 'mad_4', 'mad_5', 'mad_6', 'mad_7', 'mad_8', 'mad_9', 'mad_10',
+        'mad_11', 'mad_13', 'mad_14', 'mad_15', 'mad_16',
+        MADURADOR_ETILENO_NIVEL_KEY, MADURADOR_ETILENO_SET_KEY
+    ];
 
     const MADURADOR_ETILENO_MIN = 0;
     const MADURADOR_ETILENO_MAX = 300;
-    /** Placeholders del equipo: no son lecturas reales */
-    const MADURADOR_ETILENO_PLACEHOLDER = {
-        mad_1: 1,
-        mad_2: 20
-    };
+    const MADURADOR_ETILENO_PLACEHOLDER = { mad_18: 1, mad_19: 20 };
+
+    const MADURADOR_PCT_AXIS_MIN = 0;
+    const MADURADOR_PCT_AXIS_MAX = 100;
+
+    /** Por defecto visible: nivel de etileno */
+    const MADURADOR_DEFAULT_ON = new Set([MADURADOR_ETILENO_NIVEL_KEY]);
+
+    const MADURADOR_GROUPS = [
+        {
+            id: 'temp',
+            label: 'Temperaturas (°C) — eje Y',
+            keys: ['mad_2', 'mad_3', 'mad_4', 'mad_5', 'mad_6', 'mad_7', 'mad_8', 'mad_9', 'mad_10'],
+            defaultKeys: []
+        },
+        {
+            id: 'pct',
+            label: 'Porcentajes — eje Y1',
+            keys: ['mad_11', 'mad_13', 'mad_14', 'mad_15', 'mad_16'],
+            defaultKeys: []
+        },
+        {
+            id: 'etileno',
+            label: 'Etileno (ppm) — eje Y2',
+            keys: [MADURADOR_ETILENO_NIVEL_KEY, MADURADOR_ETILENO_SET_KEY],
+            defaultKeys: [MADURADOR_ETILENO_NIVEL_KEY]
+        }
+    ];
 
     function maduradorEsClaveGraficable(key) {
-        return MADURADOR_ETILENO_KEYS.has(key);
+        return MADURADOR_CHART_KEY_ORDER.indexOf(key) !== -1;
     }
 
-    /**
-     * Etileno (mad_1 / mad_2): suprimir placeholders (1 / 20), fuera de escala (> 300) o no numérico.
-     */
     function maduradorEtilenoValorSuprimido(key, v) {
-        if (!maduradorEsClaveGraficable(key)) return false;
+        if (!MADURADOR_ETILENO_PPM_KEYS.has(key)) return false;
         if (v === null || v === undefined || v === '') return false;
         const n = Number(v);
         if (!Number.isFinite(n)) return true;
         if (n > MADURADOR_ETILENO_MAX) return true;
-        if (key === MADURADOR_ETILENO_NIVEL_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_1) return true;
-        if (key === MADURADOR_ETILENO_SET_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_2) return true;
+        if (key === MADURADOR_ETILENO_NIVEL_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_18) return true;
+        if (key === MADURADOR_ETILENO_SET_KEY && n === MADURADOR_ETILENO_PLACEHOLDER.mad_19) return true;
         return false;
     }
 
-    /** y para Chart.js: valor suprimido → null (hueco en la serie) */
     function yValueMaduradorChart(key, v) {
         if (!maduradorEsClaveGraficable(key)) return null;
         if (v === null || v === undefined || v === '') return null;
-        if (maduradorEtilenoValorSuprimido(key, v)) return null;
+        if (MADURADOR_ETILENO_PPM_KEYS.has(key) && maduradorEtilenoValorSuprimido(key, v)) return null;
         const y = Number(v);
         return Number.isFinite(y) ? y : null;
     }
 
-    const MADURADOR_DEFAULT_ON = new Set(MADURADOR_CHART_KEYS);
+    function maduradorYAxisId(key) {
+        if (MADURADOR_TEMP_KEYS.has(key)) return 'y';
+        if (MADURADOR_PCT_KEYS.has(key)) return 'y1';
+        if (MADURADOR_ETILENO_PPM_KEYS.has(key)) return 'y2';
+        return 'y';
+    }
 
-    const MADURADOR_GROUPS = [
-        {
-            id: 'etileno',
-            label: 'Etileno (ppm)',
-            keys: MADURADOR_CHART_KEYS,
-            defaultKeys: MADURADOR_CHART_KEYS
+    function maduradorSortKeys(a, b) {
+        const na = parseInt(String(a).replace('mad_', ''), 10);
+        const nb = parseInt(String(b).replace('mad_', ''), 10);
+        return (Number.isFinite(na) ? na : 0) - (Number.isFinite(nb) ? nb : 0);
+    }
+
+    /** Claves que pueden dibujarse en el gráfico (presentes en la respuesta) */
+    function maduradorGraphKeys(seriesObj) {
+        return MADURADOR_CHART_KEY_ORDER.filter(function (k) {
+            return Object.prototype.hasOwnProperty.call(seriesObj, k);
+        });
+    }
+
+    /** Todas las mad_* de la API (incl. power y solo-tabla) para tabla/export */
+    function maduradorTableKeys(seriesObj) {
+        return Object.keys(seriesObj)
+            .filter(function (k) {
+                return /^mad_\d+$/.test(k);
+            })
+            .sort(maduradorSortKeys);
+    }
+
+    /** Sombreado suave cuando mad_1 (Power) = 1 */
+    const maduradorPowerShadePlugin = {
+        id: 'maduradorPowerShade',
+        beforeDatasetsDraw: function (chart) {
+            if (!isMadurador || !lastPayload || !lastPayload.data) return;
+            const power = lastPayload.data.series[MADURADOR_POWER_KEY];
+            const fechas = lastPayload.data.fechas;
+            if (!Array.isArray(power) || !Array.isArray(fechas) || fechas.length === 0) return;
+            const xScale = chart.scales.x;
+            if (!xScale || !chart.chartArea) return;
+            const ctx = chart.ctx;
+            const top = chart.chartArea.top;
+            const h = chart.chartArea.bottom - top;
+            ctx.save();
+            ctx.fillStyle = 'rgba(25, 135, 84, 0.07)';
+            for (let i = 0; i < fechas.length; i++) {
+                if (Number(power[i]) !== 1) continue;
+                const t0 = new Date(fechas[i]).getTime();
+                let t1;
+                if (i + 1 < fechas.length) {
+                    t1 = new Date(fechas[i + 1]).getTime();
+                } else if (i > 0) {
+                    t1 = t0 + (t0 - new Date(fechas[i - 1]).getTime());
+                } else {
+                    t1 = t0 + 60000;
+                }
+                const x0 = xScale.getPixelForValue(t0);
+                const x1 = xScale.getPixelForValue(t1);
+                const left = Math.min(x0, x1);
+                const w = Math.max(Math.abs(x1 - x0), 4);
+                ctx.fillRect(left, top, w, h);
+            }
+            ctx.restore();
         }
-    ];
-
-    /** Orden fijo para colores */
-    const MADURADOR_CHART_KEY_ORDER = MADURADOR_CHART_KEYS.slice();
+    };
 
     /** Grupos para UI (orden visual) */
     const STARCOOL_GROUPS = [
@@ -648,9 +731,7 @@
     }
 
     function maduradorSeriesKeys(seriesObj) {
-        return MADURADOR_CHART_KEYS.filter(function (k) {
-            return Object.prototype.hasOwnProperty.call(seriesObj, k);
-        });
+        return maduradorGraphKeys(seriesObj);
     }
 
     /** Orden fijo para colores (sin Power) */
@@ -1355,6 +1436,15 @@
             const colorOrder = MADURADOR_CHART_KEY_ORDER.filter(function (k) {
                 return Object.prototype.hasOwnProperty.call(seriesObj, k);
             });
+            const hasTemp = chartKeys.some(function (k) {
+                return maduradorYAxisId(k) === 'y';
+            });
+            const hasPct = chartKeys.some(function (k) {
+                return maduradorYAxisId(k) === 'y1';
+            });
+            const hasPpm = chartKeys.some(function (k) {
+                return maduradorYAxisId(k) === 'y2';
+            });
 
             if (chartKeys.length === 0) {
                 const ctx = el.canvas.getContext('2d');
@@ -1367,7 +1457,7 @@
                         plugins: {
                             title: {
                                 display: true,
-                                text: 'Marque al menos una serie en el panel superior (Etileno o SP Etileno)'
+                                text: 'Marque al menos una serie en el panel superior (por defecto: Nivel de etileno)'
                             }
                         }
                     }
@@ -1379,65 +1469,99 @@
                 const arr = seriesObj[key];
                 const pts = fechas.map(function (t, i) {
                     const y = yValueMaduradorChart(key, arr[i]);
-                    return {
-                        x: new Date(t),
-                        y: y
-                    };
+                    return { x: new Date(t), y: y };
                 });
                 const ci = colorIndexForKey(key, colorOrder);
+                const isSetPpm = key === MADURADOR_ETILENO_SET_KEY;
                 return {
                     label: serieLabel(key),
                     data: pts,
-                    yAxisID: 'y',
+                    yAxisID: maduradorYAxisId(key),
+                    madKey: key,
                     borderColor: COLORS[ci % COLORS.length],
                     backgroundColor: 'transparent',
                     tension: 0.15,
                     spanGaps: false,
                     pointRadius: fechas.length > 80 ? 0 : 2,
-                    borderWidth: key === MADURADOR_ETILENO_SET_KEY ? 2 : 1.5,
-                    borderDash: key === MADURADOR_ETILENO_SET_KEY ? [6, 4] : undefined
+                    borderWidth: isSetPpm ? 2 : 1.5,
+                    borderDash: isSetPpm ? [6, 4] : undefined
                 };
             });
 
-            const scales = {
-                x: timeScaleXAxis(),
-                y: {
+            const scales = { x: timeScaleXAxis() };
+            if (hasTemp) {
+                scales.y = {
                     type: 'linear',
                     position: 'left',
+                    title: { display: true, text: 'Temperatura (°C)' },
+                    grid: { drawOnChartArea: true }
+                };
+            }
+            if (hasPct) {
+                scales.y1 = {
+                    type: 'linear',
+                    position: 'right',
+                    min: MADURADOR_PCT_AXIS_MIN,
+                    max: MADURADOR_PCT_AXIS_MAX,
+                    title: { display: true, text: '%' },
+                    grid: { drawOnChartArea: false }
+                };
+            }
+            if (hasPpm) {
+                scales.y2 = {
+                    type: 'linear',
+                    position: 'right',
                     min: MADURADOR_ETILENO_MIN,
                     max: MADURADOR_ETILENO_MAX,
                     title: { display: true, text: 'Etileno (ppm)' },
-                    grid: { drawOnChartArea: true }
-                }
+                    grid: { drawOnChartArea: false }
+                };
+            }
+
+            const chartOpts = {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                    tooltip: {
+                        callbacks: {
+                            title: function (items) {
+                                if (!items.length) return '';
+                                const x = items[0].parsed.x;
+                                return x != null ? new Date(x).toLocaleString() : '';
+                            },
+                            label: function (item) {
+                                const val = item.parsed.y;
+                                if (val == null || Number.isNaN(val)) return item.dataset.label + ': —';
+                                const ds = item.chart.data.datasets[item.datasetIndex];
+                                const key = ds && ds.madKey ? ds.madKey : null;
+                                if (key && MADURADOR_ETILENO_PPM_KEYS.has(key)) {
+                                    return item.dataset.label + ': ' + val + ' ppm';
+                                }
+                                if (key && MADURADOR_PCT_KEYS.has(key)) {
+                                    return item.dataset.label + ': ' + val + ' %';
+                                }
+                                if (key && MADURADOR_TEMP_KEYS.has(key)) {
+                                    return item.dataset.label + ': ' + val + ' °C';
+                                }
+                                return item.dataset.label + ': ' + val;
+                            }
+                        }
+                    }
+                },
+                scales: scales
             };
+            if (hasPct && hasPpm) {
+                chartOpts.layout = { padding: { right: 8 } };
+            }
 
             const ctx = el.canvas.getContext('2d');
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: { datasets: datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
-                        tooltip: {
-                            callbacks: {
-                                title: function (items) {
-                                    if (!items.length) return '';
-                                    const x = items[0].parsed.x;
-                                    return x != null ? new Date(x).toLocaleString() : '';
-                                },
-                                label: function (item) {
-                                    const val = item.parsed.y;
-                                    if (val == null || Number.isNaN(val)) return item.dataset.label + ': —';
-                                    return item.dataset.label + ': ' + val + ' ppm';
-                                }
-                            }
-                        }
-                    },
-                    scales: scales
-                }
+                options: chartOpts,
+                plugins: [maduradorPowerShadePlugin]
             });
             return;
         }
@@ -1529,7 +1653,7 @@
         const fechas = d.fechas;
         const seriesObj = d.series;
         if (!Array.isArray(fechas) || fechas.length === 0) return null;
-        const keys = isMadurador ? maduradorSeriesKeys(seriesObj) : Object.keys(seriesObj).sort();
+        const keys = isMadurador ? maduradorTableKeys(seriesObj) : Object.keys(seriesObj).sort();
         if (keys.length === 0) return null;
         const headers = ['Fecha / hora'].concat(
             keys.map(function (k) {
@@ -1655,7 +1779,7 @@
         const d = payload.data;
         const fechas = d.fechas;
         const seriesObj = d.series;
-        const keys = isMadurador ? maduradorSeriesKeys(seriesObj) : Object.keys(seriesObj).sort();
+        const keys = isMadurador ? maduradorTableKeys(seriesObj) : Object.keys(seriesObj).sort();
 
         el.tableHead.innerHTML = '';
         const th0 = document.createElement('th');

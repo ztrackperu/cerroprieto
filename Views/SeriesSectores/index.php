@@ -91,7 +91,7 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
         <div id="seriesMaduradorControls" class="card mb-3 d-none">
             <div class="card-header py-2">
                 <span class="fw-semibold">Series en el gráfico (Madurador)</span>
-                <span class="text-muted small ms-2">Solo etileno: mad_1 nivel (ppm) y mad_2 setpoint (ppm). Eje Y 0–300 ppm.</span>
+                <span class="text-muted small ms-2">Y: temp. mad_2–10 · Y1: % mad_11,13–16 · Y2: ppm mad_18–19 (por defecto mad_18). Sombreado verde claro si Power (mad_1)=1. Solo tabla: mad_12,17,20–22. Etiquetas según proyecto.</span>
             </div>
             <div class="card-body py-2" id="seriesMaduradorControlsBody"></div>
         </div>

@@ -31,15 +31,21 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
         <div class="card mb-3">
             <div class="card-body">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-4 col-lg-3">
+                    <div class="col-md-5 col-lg-4">
                         <label class="form-label small text-muted mb-1">Inicio (opcional)</label>
-                        <input type="datetime-local" class="form-control form-control-sm" id="seriesStart" step="1">
+                        <div class="input-group input-group-sm series-range-datetime">
+                            <input type="date" class="form-control" id="seriesStartDate" aria-label="Fecha inicio">
+                            <input type="time" class="form-control" id="seriesStartTime" step="1" value="00:00:00" aria-label="Hora inicio">
+                        </div>
                     </div>
-                    <div class="col-md-4 col-lg-3">
+                    <div class="col-md-5 col-lg-4">
                         <label class="form-label small text-muted mb-1">Fin (opcional)</label>
-                        <input type="datetime-local" class="form-control form-control-sm" id="seriesEnd" step="1">
+                        <div class="input-group input-group-sm series-range-datetime">
+                            <input type="date" class="form-control" id="seriesEndDate" aria-label="Fecha fin">
+                            <input type="time" class="form-control" id="seriesEndTime" step="1" value="23:59:59" aria-label="Hora fin">
+                        </div>
                     </div>
-                    <div class="col-md-4 col-lg-6 d-flex flex-wrap gap-2">
+                    <div class="col-md-2 col-lg-4 d-flex flex-wrap gap-2 align-items-end">
                         <button type="button" class="btn btn-primary btn-sm" id="seriesBtnConsultar">
                             <i class="bi bi-search me-1"></i> Consultar rango
                         </button>
@@ -65,7 +71,7 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
                         </div>
                     </div>
                 </div>
-                <p class="small text-muted mt-2 mb-0">Sin fechas, el servicio devuelve las últimas 12 horas. Formato enviado al API: <code>DD-MM-YYYY_HH-mm-ss</code>.</p>
+                <p class="small text-muted mt-2 mb-0">Sin fechas, el servicio devuelve las últimas 12 horas. Elija día y hora (inicio por defecto 00:00:00, fin 23:59:59). Formato API: <code>DD-MM-YYYY_HH-mm-ss</code>.</p>
             </div>
         </div>
 

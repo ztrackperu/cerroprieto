@@ -372,8 +372,10 @@
         btnUlt12: document.getElementById('seriesBtnUltimas12'),
         btnTabla: document.getElementById('seriesBtnTabla'),
         btnTablaText: document.getElementById('seriesBtnTablaText'),
-        start: document.getElementById('seriesStart'),
-        end: document.getElementById('seriesEnd'),
+        startDate: document.getElementById('seriesStartDate'),
+        startTime: document.getElementById('seriesStartTime'),
+        endDate: document.getElementById('seriesEndDate'),
+        endTime: document.getElementById('seriesEndTime'),
         starcoolPanel: document.getElementById('seriesStarcoolControls'),
         starcoolBody: document.getElementById('seriesStarcoolControlsBody'),
         atmosferaPanel: document.getElementById('seriesAtmosferaControls'),
@@ -403,6 +405,48 @@
 
     function hideAlert() {
         if (el.alert) el.alert.classList.add('d-none');
+    }
+
+    function seriesNormalizeTimePart(timeStr, fallback) {
+        const t = timeStr != null ? String(timeStr).trim() : '';
+        if (!t) return fallback;
+        if (/^\d{2}:\d{2}$/.test(t)) return t + ':00';
+        if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+        return fallback;
+    }
+
+    /** Combina input date + time → cadena parseable por Date (hora local). */
+    function seriesCombineDateTime(dateEl, timeEl, which) {
+        if (!dateEl || !dateEl.value) return '';
+        const fallback = which === 'start' ? '00:00:00' : '23:59:59';
+        const timePart = seriesNormalizeTimePart(timeEl && timeEl.value, fallback);
+        return dateEl.value + 'T' + timePart;
+    }
+
+    function seriesEnsureDefaultTime(dateEl, timeEl, which) {
+        if (!dateEl || !dateEl.value || !timeEl) return;
+        if (timeEl.value && String(timeEl.value).trim() !== '') return;
+        timeEl.value = which === 'start' ? '00:00:00' : '23:59:59';
+    }
+
+    function seriesClearRangeInputs() {
+        if (el.startDate) el.startDate.value = '';
+        if (el.endDate) el.endDate.value = '';
+        if (el.startTime) el.startTime.value = '00:00:00';
+        if (el.endTime) el.endTime.value = '23:59:59';
+    }
+
+    function initSeriesRangePickers() {
+        if (el.startDate && el.startTime) {
+            el.startDate.addEventListener('change', function () {
+                seriesEnsureDefaultTime(el.startDate, el.startTime, 'start');
+            });
+        }
+        if (el.endDate && el.endTime) {
+            el.endDate.addEventListener('change', function () {
+                seriesEnsureDefaultTime(el.endDate, el.endTime, 'end');
+            });
+        }
     }
 
     function localInputToApiFormat(value) {
@@ -2163,8 +2207,12 @@
     }
 
     function onConsultar() {
-        const s = el.start && el.start.value ? localInputToApiFormat(el.start.value) : '';
-        const e = el.end && el.end.value ? localInputToApiFormat(el.end.value) : '';
+        seriesEnsureDefaultTime(el.startDate, el.startTime, 'start');
+        seriesEnsureDefaultTime(el.endDate, el.endTime, 'end');
+        const sRaw = seriesCombineDateTime(el.startDate, el.startTime, 'start');
+        const eRaw = seriesCombineDateTime(el.endDate, el.endTime, 'end');
+        const s = sRaw ? localInputToApiFormat(sRaw) : '';
+        const e = eRaw ? localInputToApiFormat(eRaw) : '';
         if ((s && !e) || (!s && e)) {
             showAlert('Indique ambas fechas (inicio y fin) o ninguna para usar las últimas 12 horas.', 'danger');
             return;
@@ -2173,8 +2221,7 @@
     }
 
     function onUlt12() {
-        if (el.start) el.start.value = '';
-        if (el.end) el.end.value = '';
+        seriesClearRangeInputs();
         runLoad('', '');
     }
 
@@ -2187,6 +2234,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        initSeriesRangePickers();
         if (el.btnConsultar) el.btnConsultar.addEventListener('click', onConsultar);
         if (el.btnUlt12) el.btnUlt12.addEventListener('click', onUlt12);
         if (el.btnTabla) el.btnTabla.addEventListener('click', onToggleTabla);

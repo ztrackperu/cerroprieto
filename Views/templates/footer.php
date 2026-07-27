@@ -135,7 +135,12 @@ if (!empty($_GET['url'])) {
     $script = $cadena[0] . '.js';
     //echo $script;
     if (file_exists('Assets/js/' . $script)) {
-        echo '<script src="'. base_url . 'Assets/js/' . $script .'"></script>';
+        $jsFile = 'Assets/js/' . $script;
+        $jsVer = @filemtime($jsFile);
+        if ($jsVer === false) {
+            $jsVer = time();
+        }
+        echo '<script src="' . base_url . $jsFile . '?v=' . $jsVer . '"></script>';
     }else{
         echo '<script src="'. base_url . 'Assets/js/funciones.js"></script>';
     }

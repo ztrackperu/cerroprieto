@@ -83,8 +83,9 @@
     const MADURADOR_PCT_AXIS_MIN = 0;
     const MADURADOR_PCT_AXIS_MAX = 100;
 
-    /** Por defecto visible: nivel de etileno */
+    /** Por defecto visible: nivel de etileno (mad_18) */
     const MADURADOR_DEFAULT_ON = new Set([MADURADOR_ETILENO_NIVEL_KEY]);
+    const MADURADOR_UI_SCHEMA = 2;
 
     const MADURADOR_GROUPS = [
         {
@@ -1085,8 +1086,14 @@
 
     function initMaduradorVisibility(seriesObj) {
         maduradorVisibility = {};
-        maduradorSeriesKeys(seriesObj).forEach(function (k) {
-            maduradorVisibility[k] = MADURADOR_DEFAULT_ON.has(k);
+        maduradorGraphKeys(seriesObj).forEach(function (k) {
+            let on = MADURADOR_DEFAULT_ON.has(k);
+            MADURADOR_GROUPS.forEach(function (g) {
+                if (g.defaultKeys && g.defaultKeys.indexOf(k) !== -1) {
+                    on = true;
+                }
+            });
+            maduradorVisibility[k] = on;
         });
     }
 
@@ -1129,7 +1136,7 @@
             if (keysInData.length === 0) return;
 
             const col = document.createElement('div');
-            col.className = 'col-md-4';
+            col.className = 'col-lg-4 col-md-6';
             const card = document.createElement('div');
             card.className = 'border rounded p-2 h-100 bg-light';
 
@@ -1850,6 +1857,18 @@
             renderMaduradorControls(payload.data.series);
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
             if (el.atmosferaPanel) el.atmosferaPanel.classList.add('d-none');
+            const madKeys = Object.keys(payload.data.series).filter(function (k) {
+                return /^mad_\d+$/.test(k);
+            });
+            console.info(
+                '[Madurador] schema v' +
+                    MADURADOR_UI_SCHEMA +
+                    ' · series API: ' +
+                    madKeys.length +
+                    ' · graficables: ' +
+                    maduradorGraphKeys(payload.data.series).length +
+                    ' (etileno mad_18/mad_19)'
+            );
         } else {
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
             if (el.atmosferaPanel) el.atmosferaPanel.classList.add('d-none');

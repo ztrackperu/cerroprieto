@@ -83,6 +83,10 @@
     const MADURADOR_ETILENO_SPIKE_MIN = 42;
     const MADURADOR_ETILENO_PLATEAU_MAX = 45;
     const MADURADOR_ETILENO_NEIGHBOR_SCAN = 10;
+    /** Ráfaga 14 → 91 → 14: máx. muestras o minutos entre anclas bajas */
+    const MADURADOR_SPIKE_MAX_SAMPLES = 6;
+    const MADURADOR_SPIKE_MAX_MS = 35 * 60 * 1000;
+    const MADURADOR_MESETA_TOLERANCIA = 15;
 
     const MADURADOR_PCT_AXIS_MIN = 0;
     const MADURADOR_PCT_AXIS_MAX = 100;
@@ -217,76 +221,151 @@
         return false;
     }
 
-    /** Tras i, ¿vuelve a meseta baja sin una rampa larga? */
+    function maduradorMesetasSimilares(a, b) {
+        return Math.abs(a - b) <= MADURADOR_MESETA_TOLERANCIA;
+    }
+
+    function maduradorDiffMsFechas(fechas, i, j) {
+        if (!fechas || fechas[i] == null || fechas[j] == null) return null;
+        const a = new Date(fechas[i]).getTime();
+        const b = new Date(fechas[j]).getTime();
+        if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+        return Math.abs(b - a);
+    }
+
+    /** Subida real entre anclas (no 14 → 91 → 14). */
+    function maduradorSegmentoEsRampaMaduracion(arr, i0, i1) {
+        const v0 = maduradorNumeroSerie(arr[i0]);
+        const v1 = maduradorNumeroSerie(arr[i1]);
+        if (v0 === null || v1 === null) return false;
+        if (maduradorMesetasSimilares(v0, v1) && v1 <= v0 + 8) return false;
+        if (v1 > v0 + 8 && !maduradorMesetasSimilares(v0, v1)) return true;
+        let last = v0;
+        let pasosSubiendo = 0;
+        for (let k = i0 + 1; k <= i1; k++) {
+            const v = maduradorNumeroSerie(arr[k]);
+            if (v === null) continue;
+            if (v >= last - 0.5) pasosSubiendo++;
+            last = v;
+        }
+        return v1 > v0 + 10 && pasosSubiendo >= 2;
+    }
+
+    function maduradorVentanaPicoCorta(fechas, i0, i1) {
+        const span = i1 - i0;
+        if (span <= MADURADOR_SPIKE_MAX_SAMPLES) return true;
+        const ms = maduradorDiffMsFechas(fechas, i0, i1);
+        return ms !== null && ms <= MADURADOR_SPIKE_MAX_MS;
+    }
+
+    /** Tras i, ¿vuelve a meseta baja? (i ya es lectura alta) */
     function maduradorSerieRetornaAMesetaBaja(arr, i) {
-        let seenHigh = false;
         for (let k = 1; k <= MADURADOR_ETILENO_NEIGHBOR_SCAN; k++) {
             const j = i + k;
             if (j >= arr.length) return false;
             const v = maduradorNumeroSerie(arr[j]);
             if (v === null) continue;
-            if (v <= MADURADOR_ETILENO_PLATEAU_MAX) return seenHigh;
-            if (v >= MADURADOR_ETILENO_SPIKE_MIN) {
-                seenHigh = true;
-                continue;
-            }
+            if (v <= MADURADOR_ETILENO_PLATEAU_MAX) return true;
+            if (v >= MADURADOR_ETILENO_SPIKE_MIN) continue;
             return false;
         }
         return false;
     }
 
     /**
-     * Pico fantasma en mad_18: salto corto a ~90 ppm entre lecturas ~15 ppm, o pico local que no sigue tendencia.
-     * No suprime rampas de maduración (subida progresiva 6 → 200+ ppm).
+     * Detecta segmentos ancla baja — pico(s) — ancla baja en pocos minutos/muestras (14.2, 91, 14.1).
      */
-    function maduradorEtilenoPicoSinTendencia(arr, i) {
+    function maduradorMarcarRafagasMeseta(arr, fechas, mask) {
+        for (let prevIdx = 0; prevIdx < arr.length; prevIdx++) {
+            const prev = maduradorNumeroSerie(arr[prevIdx]);
+            if (prev === null || prev > MADURADOR_ETILENO_PLATEAU_MAX) continue;
+
+            for (let nextIdx = prevIdx + 2; nextIdx < arr.length; nextIdx++) {
+                if (nextIdx - prevIdx > MADURADOR_SPIKE_MAX_SAMPLES) {
+                    const msFar = maduradorDiffMsFechas(fechas, prevIdx, nextIdx);
+                    if (msFar === null || msFar > MADURADOR_SPIKE_MAX_MS) break;
+                }
+
+                const next = maduradorNumeroSerie(arr[nextIdx]);
+                if (next === null) continue;
+                if (next > MADURADOR_ETILENO_PLATEAU_MAX) break;
+                if (!maduradorMesetasSimilares(prev, next)) continue;
+                if (!maduradorVentanaPicoCorta(fechas, prevIdx, nextIdx)) continue;
+
+                let maxHi = 0;
+                let tienePico = false;
+                for (let k = prevIdx + 1; k < nextIdx; k++) {
+                    const v = maduradorNumeroSerie(arr[k]);
+                    if (v === null) continue;
+                    if (v >= MADURADOR_ETILENO_SPIKE_MIN) tienePico = true;
+                    if (v > maxHi) maxHi = v;
+                }
+                if (!tienePico || maxHi < Math.max(prev, next) + 20) continue;
+                if (maduradorSegmentoEsRampaMaduracion(arr, prevIdx, nextIdx)) continue;
+
+                for (let k = prevIdx + 1; k < nextIdx; k++) {
+                    const v = maduradorNumeroSerie(arr[k]);
+                    if (v !== null && v >= MADURADOR_ETILENO_SPIKE_MIN) mask[k] = true;
+                }
+            }
+        }
+    }
+
+    /**
+     * Pico fantasma en mad_18 (punto aislado). Las ráfagas 14–91–14 se marcan en maduradorMarcarRafagasMeseta.
+     */
+    function maduradorEtilenoPicoSinTendencia(arr, i, fechas) {
         if (!arr || i < 0 || i >= arr.length) return false;
         const c = maduradorNumeroSerie(arr[i]);
         if (c === null || c < MADURADOR_ETILENO_SPIKE_MIN) return false;
 
-        if (
-            maduradorSerieVieneDeMesetaBaja(arr, i) &&
-            maduradorSerieRetornaAMesetaBaja(arr, i)
-        ) {
-            return true;
-        }
-
-        if (maduradorSerieEnTendencia(arr, i)) return false;
-
-        const prev = maduradorVecinoSerie(arr, i, -1);
-        const next = maduradorVecinoSerie(arr, i, 1);
+        const prevIdx = maduradorVecinoSerieIdx(arr, i, -1);
+        const nextIdx = maduradorVecinoSerieIdx(arr, i, 1);
+        const prev = prevIdx >= 0 ? maduradorNumeroSerie(arr[prevIdx]) : null;
+        const next = nextIdx >= 0 ? maduradorNumeroSerie(arr[nextIdx]) : null;
 
         if (
             prev !== null &&
             next !== null &&
             prev <= MADURADOR_ETILENO_PLATEAU_MAX &&
-            next <= MADURADOR_ETILENO_PLATEAU_MAX
+            next <= MADURADOR_ETILENO_PLATEAU_MAX &&
+            maduradorMesetasSimilares(prev, next) &&
+            c >= Math.max(prev, next) + 20
         ) {
-            return true;
+            if (prevIdx >= 0 && nextIdx >= 0 && maduradorVentanaPicoCorta(fechas, prevIdx, nextIdx)) {
+                return true;
+            }
         }
 
         if (
-            prev !== null &&
-            next !== null &&
-            c > prev + 12 &&
-            c > next + 12 &&
-            next <= prev + 8
+            maduradorSerieVieneDeMesetaBaja(arr, i) &&
+            maduradorSerieRetornaAMesetaBaja(arr, i) &&
+            !maduradorSerieEnTendencia(arr, i)
         ) {
-            return true;
+            if (prevIdx >= 0 && nextIdx >= 0 && maduradorVentanaPicoCorta(fechas, prevIdx, nextIdx)) {
+                return true;
+            }
         }
 
         return false;
     }
 
-    function rebuildMaduradorSpikeMask(seriesObj) {
+    function rebuildMaduradorSpikeMask(seriesObj, fechas) {
         maduradorEtilenoSpikeMask = null;
         if (!seriesObj || !Object.prototype.hasOwnProperty.call(seriesObj, MADURADOR_ETILENO_NIVEL_KEY)) return;
         const arr = seriesObj[MADURADOR_ETILENO_NIVEL_KEY];
         if (!Array.isArray(arr)) return;
 
-        maduradorEtilenoSpikeMask = arr.map(function (_, i) {
-            return maduradorEtilenoPicoSinTendencia(arr, i);
+        const mask = arr.map(function () {
+            return false;
         });
+        maduradorMarcarRafagasMeseta(arr, fechas, mask);
+        for (let i = 0; i < arr.length; i++) {
+            if (!mask[i] && maduradorEtilenoPicoSinTendencia(arr, i, fechas)) {
+                mask[i] = true;
+            }
+        }
+        maduradorEtilenoSpikeMask = mask;
     }
 
     function maduradorCeldaSuprimida(key, v, rowIdx) {
@@ -2050,6 +2129,8 @@
                 power_valido: '0, 1 o null/vacío',
                 placeholders_ppm: MADURADOR_ETILENO_PLACEHOLDER,
                 filtro_picos_vecinos: true,
+                pico_ventana_muestras: MADURADOR_SPIKE_MAX_SAMPLES,
+                pico_ventana_minutos: MADURADOR_SPIKE_MAX_MS / 60000,
                 picos_mad_18_indices: maduradorEtilenoSpikeMask
                     ? maduradorEtilenoSpikeMask
                           .map(function (flag, i) {
@@ -2188,7 +2269,7 @@
             if (el.maduradorPanel) el.maduradorPanel.classList.add('d-none');
         } else if (isMadurador) {
             rebuildMaduradorInvalidRowMask(payload.data.series);
-            rebuildMaduradorSpikeMask(payload.data.series);
+            rebuildMaduradorSpikeMask(payload.data.series, payload.data.fechas);
             initMaduradorVisibility(payload.data.series);
             renderMaduradorControls(payload.data.series);
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');

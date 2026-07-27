@@ -82,11 +82,14 @@
     /** Picos fantasma (ej. 92 ppm entre ~15): umbral mínimo y meseta “baja” */
     const MADURADOR_ETILENO_SPIKE_MIN = 42;
     const MADURADOR_ETILENO_PLATEAU_MAX = 45;
-    const MADURADOR_ETILENO_NEIGHBOR_SCAN = 10;
-    /** Ráfaga 14 → 91 → 14: máx. muestras o minutos entre anclas bajas */
-    const MADURADOR_SPIKE_MAX_SAMPLES = 6;
-    const MADURADOR_SPIKE_MAX_MS = 35 * 60 * 1000;
+    const MADURADOR_ETILENO_NEIGHBOR_SCAN = 12;
+    /** Ráfaga meseta–pico–meseta: máx. muestras o minutos entre anclas */
+    const MADURADOR_SPIKE_MAX_SAMPLES = 8;
+    const MADURADOR_SPIKE_MAX_MS = 90 * 60 * 1000;
     const MADURADOR_MESETA_TOLERANCIA = 15;
+    /** Ventana deslizante (~8 lecturas) para picos vs tendencia local */
+    const MADURADOR_SPIKE_WINDOW_BEFORE = 3;
+    const MADURADOR_SPIKE_WINDOW_AFTER = 4;
 
     const MADURADOR_PCT_AXIS_MIN = 0;
     const MADURADOR_PCT_AXIS_MAX = 100;
@@ -288,7 +291,7 @@
 
                 const next = maduradorNumeroSerie(arr[nextIdx]);
                 if (next === null) continue;
-                if (next > MADURADOR_ETILENO_PLATEAU_MAX) break;
+                if (next > MADURADOR_ETILENO_PLATEAU_MAX) continue;
                 if (!maduradorMesetasSimilares(prev, next)) continue;
                 if (!maduradorVentanaPicoCorta(fechas, prevIdx, nextIdx)) continue;
 
@@ -308,6 +311,46 @@
                     if (v !== null && v >= MADURADOR_ETILENO_SPIKE_MIN) mask[k] = true;
                 }
             }
+        }
+    }
+
+    /**
+     * En ~8 muestras alrededor de i: pico (≥42 ppm) frente a mediana de meseta estable (ej. 22 vs 98.9).
+     */
+    function maduradorMarcarVentanaLocal(arr, mask) {
+        for (let i = 0; i < arr.length; i++) {
+            if (mask[i]) continue;
+            const c = maduradorNumeroSerie(arr[i]);
+            if (c === null || c < MADURADOR_ETILENO_SPIKE_MIN) continue;
+
+            const lows = [];
+            for (
+                let j = Math.max(0, i - MADURADOR_SPIKE_WINDOW_BEFORE);
+                j <= Math.min(arr.length - 1, i + MADURADOR_SPIKE_WINDOW_AFTER);
+                j++
+            ) {
+                if (j === i) continue;
+                const v = maduradorNumeroSerie(arr[j]);
+                if (v === null) continue;
+                if (v <= MADURADOR_ETILENO_PLATEAU_MAX) lows.push(v);
+            }
+            if (lows.length < 2) continue;
+
+            lows.sort(function (a, b) {
+                return a - b;
+            });
+            const baseline = lows[Math.floor(lows.length / 2)];
+            let estables = 0;
+            for (let k = 0; k < lows.length; k++) {
+                if (maduradorMesetasSimilares(lows[k], baseline)) estables++;
+            }
+            if (estables < 2) continue;
+
+            if (c < baseline + 22 && c < baseline * 2.4) continue;
+
+            if (maduradorSerieEnTendencia(arr, i)) continue;
+
+            mask[i] = true;
         }
     }
 
@@ -360,6 +403,7 @@
             return false;
         });
         maduradorMarcarRafagasMeseta(arr, fechas, mask);
+        maduradorMarcarVentanaLocal(arr, mask);
         for (let i = 0; i < arr.length; i++) {
             if (!mask[i] && maduradorEtilenoPicoSinTendencia(arr, i, fechas)) {
                 mask[i] = true;
@@ -2130,6 +2174,7 @@
                 placeholders_ppm: MADURADOR_ETILENO_PLACEHOLDER,
                 filtro_picos_vecinos: true,
                 pico_ventana_muestras: MADURADOR_SPIKE_MAX_SAMPLES,
+                pico_ventana_local: MADURADOR_SPIKE_WINDOW_BEFORE + 1 + MADURADOR_SPIKE_WINDOW_AFTER,
                 pico_ventana_minutos: MADURADOR_SPIKE_MAX_MS / 60000,
                 picos_mad_18_indices: maduradorEtilenoSpikeMask
                     ? maduradorEtilenoSpikeMask

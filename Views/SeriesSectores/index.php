@@ -59,6 +59,9 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
                             <button type="button" class="btn btn-outline-danger" id="seriesExportPdf" title="Descargar PDF">
                                 <i class="bi bi-file-earmark-pdf me-1"></i>PDF
                             </button>
+                            <button type="button" class="btn btn-outline-primary" id="seriesExportJson" title="Descargar JSON (arrays gráfico/tabla)">
+                                <i class="bi bi-braces me-1"></i>JSON
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -91,7 +94,7 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
         <div id="seriesMaduradorControls" class="card mb-3 d-none">
             <div class="card-header py-2">
                 <span class="fw-semibold">Series en el gráfico (Madurador)</span>
-                <span class="text-muted small ms-2">Y: temp. mad_2–10 · Y1: % mad_11,13–16 · Y2: ppm mad_18–19 (por defecto mad_18). Sombreado verde claro si Power (mad_1)=1. Solo tabla: mad_12,17,20–22. Etiquetas según proyecto.</span>
+                <span class="text-muted small ms-2">Y: temp. mad_2–10 · Y1: % mad_11,13–16 · Y2: ppm mad_18–19 (por defecto mad_18). Picos aislados en mad_18 → hueco. JSON exporta arrays crudos y procesados. Power=1 sombreado.</span>
             </div>
             <div class="card-body py-2" id="seriesMaduradorControlsBody"></div>
         </div>
@@ -127,6 +130,9 @@ $seriesAllowSetAnalysis = strtolower(trim($usuarioSeries)) === 'zgroup';
                     </button>
                     <button type="button" class="btn btn-outline-danger btn-sm series-export-table" data-series-fmt="pdf" title="PDF">
                         <i class="bi bi-file-earmark-pdf"></i> PDF
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm series-export-json" title="JSON">
+                        <i class="bi bi-braces"></i> JSON
                     </button>
                 </div>
             </div>

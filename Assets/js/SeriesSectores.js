@@ -123,10 +123,65 @@
         return false;
     }
 
-    function yValueMaduradorChart(key, v) {
-        if (!maduradorEsClaveGraficable(key)) return null;
+    /** @type {boolean[]|null} picos mad_18 sin tendencia (vecinos inmediatos) */
+    let maduradorEtilenoSpikeMask = null;
+
+    function maduradorNumeroSerie(v) {
         if (v === null || v === undefined || v === '') return null;
-        if (MADURADOR_ETILENO_PPM_KEYS.has(key) && maduradorEtilenoValorSuprimido(key, v)) return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    /**
+     * Pico aislado en mad_18: sube/baja respecto a vecinos en pocos minutos (ej. 14.6, 91.2, 14.3).
+     */
+    function maduradorEtilenoPicoSinTendencia(arr, i) {
+        if (!arr || i < 0 || i >= arr.length) return false;
+        const c = maduradorNumeroSerie(arr[i]);
+        if (c === null) return false;
+        const p = i > 0 ? maduradorNumeroSerie(arr[i - 1]) : null;
+        const n = i < arr.length - 1 ? maduradorNumeroSerie(arr[i + 1]) : null;
+        if (p === null || n === null) return false;
+        const local = (p + n) / 2;
+        const diff = Math.abs(c - local);
+        if (diff < 12) return false;
+        if (diff > Math.max(18, local * 1.8)) return true;
+        const maxLocal = Math.max(p, n, local);
+        const minLocal = Math.min(p, n, local);
+        if (c > p && c > n && c >= maxLocal + 25 && c >= maxLocal * 2.2) return true;
+        if (c < p && c < n && minLocal > 5 && c <= minLocal - 25 && c <= minLocal * 0.45) return true;
+        return false;
+    }
+
+    function rebuildMaduradorSpikeMask(seriesObj) {
+        maduradorEtilenoSpikeMask = null;
+        if (!seriesObj || !Object.prototype.hasOwnProperty.call(seriesObj, MADURADOR_ETILENO_NIVEL_KEY)) return;
+        const arr = seriesObj[MADURADOR_ETILENO_NIVEL_KEY];
+        if (!Array.isArray(arr)) return;
+        maduradorEtilenoSpikeMask = arr.map(function (_, i) {
+            return maduradorEtilenoPicoSinTendencia(arr, i);
+        });
+    }
+
+    function maduradorCeldaSuprimida(key, v, rowIdx) {
+        if (isMadurador && MADURADOR_ETILENO_PPM_KEYS.has(key) && maduradorEtilenoValorSuprimido(key, v)) {
+            return true;
+        }
+        if (
+            isMadurador &&
+            key === MADURADOR_ETILENO_NIVEL_KEY &&
+            maduradorEtilenoSpikeMask &&
+            maduradorEtilenoSpikeMask[rowIdx]
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    function yValueMaduradorChart(key, v, rowIdx) {
+        if (!maduradorEsClaveGraficable(key)) return null;
+        if (maduradorCeldaSuprimida(key, v, rowIdx)) return null;
+        if (v === null || v === undefined || v === '') return null;
         const y = Number(v);
         return Number.isFinite(y) ? y : null;
     }
@@ -262,6 +317,7 @@
         exportXlsx: document.getElementById('seriesExportXlsx'),
         exportCsv: document.getElementById('seriesExportCsv'),
         exportPdf: document.getElementById('seriesExportPdf'),
+        exportJson: document.getElementById('seriesExportJson'),
         starcoolStatsWrap: document.getElementById('seriesStarcoolStatsWrap'),
         starcoolStatsBody: document.getElementById('seriesStarcoolStatsBody')
     };
@@ -1475,7 +1531,7 @@
             const datasets = chartKeys.map(function (key) {
                 const arr = seriesObj[key];
                 const pts = fechas.map(function (t, i) {
-                    const y = yValueMaduradorChart(key, arr[i]);
+                    const y = yValueMaduradorChart(key, arr[i], i);
                     return { x: new Date(t), y: y };
                 });
                 const ci = colorIndexForKey(key, colorOrder);
@@ -1671,7 +1727,7 @@
             const row = [String(t)];
             keys.forEach(function (key) {
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && maduradorEtilenoValorSuprimido(key, v)) {
+                if (isMadurador && maduradorCeldaSuprimida(key, v, rowIdx)) {
                     row.push('_');
                 } else {
                     row.push(v === null || v === undefined ? '' : String(v));
@@ -1758,6 +1814,81 @@
         doc.save(sanitizeSeriesFilename(fileBase) + '_' + ts + '.pdf');
     }
 
+    function buildSeriesExportPayload() {
+        if (!lastPayload || !lastPayload.data) return null;
+        const d = lastPayload.data;
+        const fechas = d.fechas;
+        const seriesObj = d.series;
+        if (!Array.isArray(fechas) || fechas.length === 0 || !seriesObj) return null;
+
+        const keys = isMadurador ? maduradorTableKeys(seriesObj) : Object.keys(seriesObj).sort();
+        const seriesRaw = {};
+        const seriesProcessed = {};
+        const labels = {};
+
+        keys.forEach(function (key) {
+            labels[key] = serieLabel(key);
+            const rawArr = seriesObj[key];
+            seriesRaw[key] = rawArr;
+            seriesProcessed[key] = fechas.map(function (_, rowIdx) {
+                const v = rawArr[rowIdx];
+                if (isMadurador && maduradorCeldaSuprimida(key, v, rowIdx)) return null;
+                if (v === null || v === undefined || v === '') return null;
+                const n = Number(v);
+                return Number.isFinite(n) ? n : v;
+            });
+        });
+
+        const payload = {
+            sector: sector,
+            imei: d.imei || null,
+            timezone_datos: d.timezone_datos || null,
+            start_date: d.start_date || null,
+            end_date: d.end_date || null,
+            puntos: fechas.length,
+            fechas: fechas,
+            labels: labels,
+            series_raw: seriesRaw,
+            series_processed: seriesProcessed
+        };
+
+        if (isMadurador) {
+            payload.madurador_procesamiento = {
+                etileno_nivel_key: MADURADOR_ETILENO_NIVEL_KEY,
+                placeholders_ppm: MADURADOR_ETILENO_PLACEHOLDER,
+                filtro_picos_vecinos: true,
+                picos_mad_18_indices: maduradorEtilenoSpikeMask
+                    ? maduradorEtilenoSpikeMask
+                          .map(function (flag, i) {
+                              return flag ? i : -1;
+                          })
+                          .filter(function (i) {
+                              return i >= 0;
+                          })
+                    : []
+            };
+        }
+        return payload;
+    }
+
+    function exportSeriesJson() {
+        const payload = buildSeriesExportPayload();
+        if (!payload) {
+            showAlert('No hay datos para exportar en JSON.', 'warning');
+            return;
+        }
+        const ts = seriesExportTimestamp();
+        const json = JSON.stringify(payload, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = sanitizeSeriesFilename(sector) + '_' + ts + '.json';
+        a.click();
+        setTimeout(function () {
+            URL.revokeObjectURL(a.href);
+        }, 0);
+    }
+
     function exportSeriesTable(fmt) {
         const matrix = buildSeriesTableMatrix();
         if (!matrix) {
@@ -1816,7 +1947,7 @@
             keys.forEach(function (key) {
                 const td = document.createElement('td');
                 const v = seriesObj[key][rowIdx];
-                if (isMadurador && maduradorEtilenoValorSuprimido(key, v)) {
+                if (isMadurador && maduradorCeldaSuprimida(key, v, rowIdx)) {
                     td.textContent = '_';
                 } else {
                     td.textContent = v === null || v === undefined ? '—' : String(v);
@@ -1853,6 +1984,7 @@
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
             if (el.maduradorPanel) el.maduradorPanel.classList.add('d-none');
         } else if (isMadurador) {
+            rebuildMaduradorSpikeMask(payload.data.series);
             initMaduradorVisibility(payload.data.series);
             renderMaduradorControls(payload.data.series);
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
@@ -1889,6 +2021,7 @@
     function applyEmpty(message, usedRange) {
         destroyChart();
         lastPayload = null;
+        maduradorEtilenoSpikeMask = null;
         if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
         if (el.atmosferaPanel) el.atmosferaPanel.classList.add('d-none');
         if (el.maduradorPanel) el.maduradorPanel.classList.add('d-none');
@@ -1960,7 +2093,13 @@
         if (el.exportXlsx) el.exportXlsx.addEventListener('click', function () { exportSeriesTable('xlsx'); });
         if (el.exportCsv) el.exportCsv.addEventListener('click', function () { exportSeriesTable('csv'); });
         if (el.exportPdf) el.exportPdf.addEventListener('click', function () { exportSeriesTable('pdf'); });
+        if (el.exportJson) el.exportJson.addEventListener('click', exportSeriesJson);
         document.addEventListener('click', function (e) {
+            const btnJson = e.target.closest('.series-export-json');
+            if (btnJson) {
+                exportSeriesJson();
+                return;
+            }
             const btn = e.target.closest('.series-export-table');
             if (!btn) return;
             const fmt = btn.getAttribute('data-series-fmt');

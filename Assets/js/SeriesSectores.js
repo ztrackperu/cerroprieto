@@ -132,24 +132,47 @@
         return Number.isFinite(n) ? n : null;
     }
 
+    /** Lecturas ≤ este valor (ppm) se usan como referencia de tendencia local */
+    const MADURADOR_ETILENO_BASELINE_MAX = 40;
+    const MADURADOR_SPIKE_WINDOW = 5;
+
+    function maduradorBaselineVecinos(arr, i, radio) {
+        const lows = [];
+        for (let j = Math.max(0, i - radio); j <= Math.min(arr.length - 1, i + radio); j++) {
+            if (j === i) continue;
+            const v = maduradorNumeroSerie(arr[j]);
+            if (v !== null && v <= MADURADOR_ETILENO_BASELINE_MAX) lows.push(v);
+        }
+        return lows;
+    }
+
     /**
-     * Pico aislado en mad_18: sube/baja respecto a vecinos en pocos minutos (ej. 14.6, 91.2, 14.3).
+     * Pico en mad_18 vs tendencia local (±5 muestras). Detecta ráfagas 92.2, 92.4 entre ~15 ppm
+     * aunque los vecinos inmediatos también sean altos o null.
      */
     function maduradorEtilenoPicoSinTendencia(arr, i) {
         if (!arr || i < 0 || i >= arr.length) return false;
         const c = maduradorNumeroSerie(arr[i]);
         if (c === null) return false;
-        const p = i > 0 ? maduradorNumeroSerie(arr[i - 1]) : null;
-        const n = i < arr.length - 1 ? maduradorNumeroSerie(arr[i + 1]) : null;
-        if (p === null || n === null) return false;
-        const local = (p + n) / 2;
-        const diff = Math.abs(c - local);
-        if (diff < 12) return false;
-        if (diff > Math.max(18, local * 1.8)) return true;
-        const maxLocal = Math.max(p, n, local);
-        const minLocal = Math.min(p, n, local);
-        if (c > p && c > n && c >= maxLocal + 25 && c >= maxLocal * 2.2) return true;
-        if (c < p && c < n && minLocal > 5 && c <= minLocal - 25 && c <= minLocal * 0.45) return true;
+
+        const lows = maduradorBaselineVecinos(arr, i, MADURADOR_SPIKE_WINDOW);
+        if (lows.length >= 1) {
+            lows.sort(function (a, b) {
+                return a - b;
+            });
+            const baseline = lows[Math.floor(lows.length / 2)];
+            if (c >= baseline + 20 && c >= baseline * 2.3) return true;
+            if (c >= 42 && baseline <= MADURADOR_ETILENO_BASELINE_MAX) return true;
+            return false;
+        }
+
+        if (c >= 42) {
+            for (let j = Math.max(0, i - 2); j <= Math.min(arr.length - 1, i + 2); j++) {
+                if (j === i) continue;
+                const v = maduradorNumeroSerie(arr[j]);
+                if (v !== null && v >= 40) return true;
+            }
+        }
         return false;
     }
 
@@ -158,9 +181,24 @@
         if (!seriesObj || !Object.prototype.hasOwnProperty.call(seriesObj, MADURADOR_ETILENO_NIVEL_KEY)) return;
         const arr = seriesObj[MADURADOR_ETILENO_NIVEL_KEY];
         if (!Array.isArray(arr)) return;
-        maduradorEtilenoSpikeMask = arr.map(function (_, i) {
+
+        const mask = arr.map(function (_, i) {
             return maduradorEtilenoPicoSinTendencia(arr, i);
         });
+
+        for (let i = 0; i < arr.length; i++) {
+            if (mask[i]) continue;
+            const c = maduradorNumeroSerie(arr[i]);
+            if (c === null || c < 40) continue;
+            for (let j = Math.max(0, i - 2); j <= Math.min(arr.length - 1, i + 2); j++) {
+                if (mask[j]) {
+                    mask[i] = true;
+                    break;
+                }
+            }
+        }
+
+        maduradorEtilenoSpikeMask = mask;
     }
 
     function maduradorCeldaSuprimida(key, v, rowIdx) {
@@ -1544,11 +1582,21 @@
                     borderColor: COLORS[ci % COLORS.length],
                     backgroundColor: 'transparent',
                     tension: 0.15,
-                    spanGaps: false,
+                    spanGaps: true,
                     pointRadius: fechas.length > 80 ? 0 : 2,
                     borderWidth: isSetPpm ? 2 : 1.5,
                     borderDash: isSetPpm ? [6, 4] : undefined
                 };
+            });
+
+            let maxPpmVisible = 0;
+            chartKeys.forEach(function (key) {
+                if (!MADURADOR_ETILENO_PPM_KEYS.has(key)) return;
+                const arr = seriesObj[key];
+                for (let i = 0; i < fechas.length; i++) {
+                    const y = yValueMaduradorChart(key, arr[i], i);
+                    if (y != null && y > maxPpmVisible) maxPpmVisible = y;
+                }
             });
 
             const scales = { x: timeScaleXAxis() };
@@ -1571,11 +1619,15 @@
                 };
             }
             if (hasPpm) {
+                const y2Max =
+                    maxPpmVisible > 0
+                        ? Math.min(MADURADOR_ETILENO_MAX, Math.max(25, Math.ceil(maxPpmVisible * 1.35)))
+                        : MADURADOR_ETILENO_MAX;
                 scales.y2 = {
                     type: 'linear',
                     position: 'right',
                     min: MADURADOR_ETILENO_MIN,
-                    max: MADURADOR_ETILENO_MAX,
+                    max: y2Max,
                     title: { display: true, text: 'Etileno (ppm)' },
                     grid: { drawOnChartArea: false }
                 };

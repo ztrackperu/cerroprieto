@@ -125,6 +125,34 @@
 
     /** @type {boolean[]|null} picos mad_18 sin tendencia (vecinos inmediatos) */
     let maduradorEtilenoSpikeMask = null;
+    /** @type {boolean[]|null} filas con mad_1 distinto de 0, 1 o vacío/null */
+    let maduradorFilaPowerInvalidaMask = null;
+
+    /** Power válido para vista: 0, 1 o sin dato (null / vacío). */
+    function maduradorPowerValido(v) {
+        if (v === null || v === undefined || v === '') return true;
+        const n = Number(v);
+        if (Number.isFinite(n) && (n === 0 || n === 1)) return true;
+        return false;
+    }
+
+    function rebuildMaduradorInvalidRowMask(seriesObj) {
+        maduradorFilaPowerInvalidaMask = null;
+        if (!seriesObj || !Object.prototype.hasOwnProperty.call(seriesObj, MADURADOR_POWER_KEY)) return;
+        const power = seriesObj[MADURADOR_POWER_KEY];
+        if (!Array.isArray(power)) return;
+        maduradorFilaPowerInvalidaMask = power.map(function (v) {
+            return !maduradorPowerValido(v);
+        });
+    }
+
+    function maduradorFilaSuprimida(rowIdx) {
+        return (
+            isMadurador &&
+            maduradorFilaPowerInvalidaMask &&
+            maduradorFilaPowerInvalidaMask[rowIdx] === true
+        );
+    }
 
     function maduradorNumeroSerie(v) {
         if (v === null || v === undefined || v === '') return null;
@@ -202,6 +230,7 @@
     }
 
     function maduradorCeldaSuprimida(key, v, rowIdx) {
+        if (maduradorFilaSuprimida(rowIdx)) return true;
         if (isMadurador && MADURADOR_ETILENO_PPM_KEYS.has(key) && maduradorEtilenoValorSuprimido(key, v)) {
             return true;
         }
@@ -269,6 +298,7 @@
             ctx.save();
             ctx.fillStyle = 'rgba(25, 135, 84, 0.07)';
             for (let i = 0; i < fechas.length; i++) {
+                if (maduradorFilaSuprimida(i)) continue;
                 if (Number(power[i]) !== 1) continue;
                 const t0 = new Date(fechas[i]).getTime();
                 let t1;
@@ -1775,18 +1805,23 @@
                 return serieLabel(k);
             })
         );
-        const rows = fechas.map(function (t, rowIdx) {
-            const row = [String(t)];
-            keys.forEach(function (key) {
-                const v = seriesObj[key][rowIdx];
-                if (isMadurador && maduradorCeldaSuprimida(key, v, rowIdx)) {
-                    row.push('_');
-                } else {
-                    row.push(v === null || v === undefined ? '' : String(v));
-                }
+        const rows = fechas
+            .map(function (t, rowIdx) {
+                if (isMadurador && maduradorFilaSuprimida(rowIdx)) return null;
+                const row = [String(t)];
+                keys.forEach(function (key) {
+                    const v = seriesObj[key][rowIdx];
+                    if (isMadurador && maduradorCeldaSuprimida(key, v, rowIdx)) {
+                        row.push('_');
+                    } else {
+                        row.push(v === null || v === undefined ? '' : String(v));
+                    }
+                });
+                return row;
+            })
+            .filter(function (row) {
+                return row !== null;
             });
-            return row;
-        });
         return { headers: headers, rows: rows };
     }
 
@@ -1907,10 +1942,21 @@
         if (isMadurador) {
             payload.madurador_procesamiento = {
                 etileno_nivel_key: MADURADOR_ETILENO_NIVEL_KEY,
+                power_key: MADURADOR_POWER_KEY,
+                power_valido: '0, 1 o null/vacío',
                 placeholders_ppm: MADURADOR_ETILENO_PLACEHOLDER,
                 filtro_picos_vecinos: true,
                 picos_mad_18_indices: maduradorEtilenoSpikeMask
                     ? maduradorEtilenoSpikeMask
+                          .map(function (flag, i) {
+                              return flag ? i : -1;
+                          })
+                          .filter(function (i) {
+                              return i >= 0;
+                          })
+                    : [],
+                filas_power_invalido_indices: maduradorFilaPowerInvalidaMask
+                    ? maduradorFilaPowerInvalidaMask
                           .map(function (flag, i) {
                               return flag ? i : -1;
                           })
@@ -1991,6 +2037,7 @@
 
         el.tableBody.innerHTML = '';
         fechas.forEach(function (t, rowIdx) {
+            if (isMadurador && maduradorFilaSuprimida(rowIdx)) return;
             const tr = document.createElement('tr');
             const td0 = document.createElement('td');
             td0.textContent = t;
@@ -2036,6 +2083,7 @@
             if (el.starcoolPanel) el.starcoolPanel.classList.add('d-none');
             if (el.maduradorPanel) el.maduradorPanel.classList.add('d-none');
         } else if (isMadurador) {
+            rebuildMaduradorInvalidRowMask(payload.data.series);
             rebuildMaduradorSpikeMask(payload.data.series);
             initMaduradorVisibility(payload.data.series);
             renderMaduradorControls(payload.data.series);
